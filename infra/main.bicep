@@ -37,15 +37,14 @@ param formRecognizerResourceGroupLocation string = location
 
 param formRecognizerSkuName string = 'S0'
 
-param gptDeploymentName string = ''
-param gptDeploymentCapacity int = 30
-param gptModelName string = 'text-davinci-003'
 param chatGptDeploymentName string = ''
 param chatGptDeploymentCapacity int = 30
-param chatGptModelName string = 'gpt-35-turbo'
-param embeddingDeploymentName string = 'embedding'
+param chatGptModelName string = ''
+param chatGptModelVersion string = ''
+param embeddingDeploymentName string = ''
 param embeddingDeploymentCapacity int = 30
 param embeddingModelName string = 'text-embedding-ada-002'
+param embeddingModelVersion string = '2'
 
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
@@ -53,8 +52,10 @@ param principalId string = ''
 var abbrs = loadJsonContent('abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
-var gptDeployment = empty(gptDeploymentName) ? 'davinci' : gptDeploymentName
 var chatGptDeployment = empty(chatGptDeploymentName) ? 'chat' : chatGptDeploymentName
+var chatGptDeploymentModelName = empty(chatGptModelName) ? 'gpt-35-turbo' : chatGptModelName
+var chatGptDeploymentModelVersion = empty(chatGptModelVersion) ? '0301' : chatGptModelVersion
+var embeddingDeployment = empty(embeddingDeploymentName) ? 'embedding' : embeddingDeploymentName
 
 // Organize resources in a resource group
 resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -114,8 +115,7 @@ module backend 'core/host/appservice.bicep' = {
       AZURE_OPENAI_SERVICE: openAi.outputs.name
       AZURE_SEARCH_INDEX: searchIndexName
       AZURE_SEARCH_SERVICE: searchService.outputs.name
-      AZURE_OPENAI_EMB_DEPLOYMENT: embeddingDeploymentName
-      AZURE_OPENAI_GPT_DEPLOYMENT: gptDeployment
+      AZURE_OPENAI_EMB_DEPLOYMENT: embeddingDeployment
       AZURE_OPENAI_CHATGPT_DEPLOYMENT: chatGptDeployment
     }
   }
@@ -133,23 +133,11 @@ module openAi 'core/ai/cognitiveservices.bicep' = {
     }
     deployments: [
       {
-        name: gptDeployment
-        model: {
-          format: 'OpenAI'
-          name: gptModelName
-          version: '1'
-        }
-        sku: {
-          name: 'Standard'
-          capacity: gptDeploymentCapacity
-        }
-      }
-      {
         name: chatGptDeployment
         model: {
           format: 'OpenAI'
-          name: chatGptModelName
-          version: '0301'
+          name: chatGptDeploymentModelName
+          version: chatGptDeploymentModelVersion
         }
         sku: {
           name: 'Standard'
@@ -157,11 +145,11 @@ module openAi 'core/ai/cognitiveservices.bicep' = {
         }
       }
       {
-        name: embeddingDeploymentName
+        name: embeddingDeployment
         model: {
           format: 'OpenAI'
           name: embeddingModelName
-          version: '2'
+          version: embeddingModelVersion
         }
         capacity: embeddingDeploymentCapacity
       }
@@ -335,7 +323,6 @@ output AZURE_RESOURCE_GROUP string = resourceGroup.name
 output AZURE_OPENAI_SERVICE string = openAi.outputs.name
 output AZURE_OPENAI_RESOURCE_GROUP string = openAiResourceGroup.name
 output AZURE_OPENAI_EMB_DEPLOYMENT string = embeddingDeploymentName
-output AZURE_OPENAI_GPT_DEPLOYMENT string = gptDeployment
 output AZURE_OPENAI_CHATGPT_DEPLOYMENT string = chatGptDeployment
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name

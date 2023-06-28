@@ -47,8 +47,11 @@
     "chatGptDeploymentName": {
       "value": "${AZURE_OPENAI_CHATGPT_DEPLOYMENT}"
     },
-    "gptDeploymentName": {
-      "value": "${AZURE_OPENAI_GPT_DEPLOYMENT}"
+    "chatGptModelName": {
+      "value": "${AZURE_OPENAI_CHATGPT_MODEL}"
+    },
+    "embeddingDeploymentName": {
+      "value": "${AZURE_OPENAI_EMBEDDING_DEPLOYMENT}"
     }
   }
 }
