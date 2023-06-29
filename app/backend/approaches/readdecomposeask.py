@@ -3,7 +3,7 @@ import re
 from approaches.approach import Approach
 from azure.search.documents import SearchClient
 from azure.search.documents.models import QueryType, Vector
-from langchain.llms.openai import AzureOpenAI
+from langchain.chat_models.azure_openai import AzureChatOpenAI
 from langchain.prompts import PromptTemplate, BasePromptTemplate
 from langchain.callbacks.manager import CallbackManager
 from langchain.agents import Tool, AgentExecutor
@@ -11,16 +11,6 @@ from langchain.agents.react.base import ReActDocstoreAgent
 from langchainadapters import HtmlCallbackHandler
 from text import nonewlines
 from typing import Any, List, Optional
-
-class ChatAzureOpenAI(AzureOpenAI):
-    @property
-    def _invocation_params(self):
-        params = super()._invocation_params
-        # fix InvalidRequestError: logprobs, best_of and echo parameters are not available on gpt-35-turbo model.
-        params.pop('logprobs', None)
-        params.pop('best_of', None)
-        params.pop('echo', None)
-        return params
 
 class ReadDecomposeAsk(Approach):
     def __init__(self, search_client: SearchClient, openai_deployment: str, embedding_deployment: str, sourcepage_field: str, content_field: str):
@@ -90,7 +80,7 @@ class ReadDecomposeAsk(Approach):
         cb_handler = HtmlCallbackHandler()
         cb_manager = CallbackManager(handlers=[cb_handler])
 
-        llm = AzureOpenAI(deployment_name=self.openai_deployment, temperature=overrides.get("temperature") or 0.3, openai_api_key=openai.api_key)
+        llm = AzureChatOpenAI(deployment_name=self.openai_deployment, temperature=0, openai_api_base=openai.api_base, openai_api_version=openai.api_version, openai_api_type=openai.api_type, openai_api_key=openai.api_key)
         tools = [
             Tool(name="Search", func=lambda q: self.search(q, overrides), description="useful for when you need to ask with search", callbacks=cb_manager),
             Tool(name="Lookup", func=self.lookup, description="useful for when you need to ask with lookup", callbacks=cb_manager)

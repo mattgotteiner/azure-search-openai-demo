@@ -2,7 +2,7 @@ import openai
 from approaches.approach import Approach
 from azure.search.documents import SearchClient
 from azure.search.documents.models import QueryType, Vector
-from langchain.llms.openai import AzureOpenAI
+from langchain.chat_models.azure_openai import AzureChatOpenAI
 from langchain.callbacks.manager import CallbackManager, Callbacks
 from langchain.chains import LLMChain
 from langchain.agents import Tool, ZeroShotAgent, AgentExecutor
@@ -11,16 +11,6 @@ from langchainadapters import HtmlCallbackHandler
 from text import nonewlines
 from lookuptool import CsvLookupTool
 from typing import Any
-
-class ChatAzureOpenAI(AzureOpenAI):
-    @property
-    def _invocation_params(self):
-        params = super()._invocation_params
-        # fix InvalidRequestError: logprobs, best_of and echo parameters are not available on gpt-35-turbo model.
-        params.pop('logprobs', None)
-        params.pop('best_of', None)
-        params.pop('echo', None)
-        return params
 
 # Attempt to answer questions by iteratively evaluating the question to see what information is missing, and once all information
 # is present then formulate an answer. Each iteration consists of two parts: first use GPT to see if we need more information, 
@@ -35,11 +25,7 @@ class ReadRetrieveReadApproach(Approach):
 "For tabular information return it as an html table. Do not return markdown format. " \
 "Each source has a name followed by colon and the actual data, quote the source name for each piece of data you use in the response. " \
 "For example, if the question is \"What color is the sky?\" and one of the information sources says \"info123: the sky is blue whenever it's not cloudy\", then answer with \"The sky is blue [info123]\" " \
-"It's important to strictly follow the format where the name of the source is in square brackets at the end of the sentence, and only up to the prefix before the colon (\":\"). " \
-"If there are multiple sources, cite each one in their own square brackets. For example, use \"[info343][ref-76]\" and not \"[info343,ref-76]\". " \
-"Never quote tool names as sources." \
-"If you cannot answer using the sources below, say that you don't know. " \
-"\n\nYou can access to the following tools:"
+"If you cannot answer using the sources below, say that you don't know. "
     
     template_suffix = """
 Begin!
@@ -104,15 +90,15 @@ Thought: {agent_scratchpad}"""
                         func=lambda q: self.retrieve(q, overrides), 
                         description=self.CognitiveSearchToolDescription,
                         callbacks=cb_manager)
-        employee_tool = EmployeeInfoTool("Employee1", callbacks=cb_manager)
-        tools = [acs_tool, employee_tool]
+        tools = [acs_tool]
 
         prompt = ZeroShotAgent.create_prompt(
             tools=tools,
             prefix=overrides.get("prompt_template_prefix") or self.template_prefix,
             suffix=overrides.get("prompt_template_suffix") or self.template_suffix,
             input_variables = ["input", "agent_scratchpad"])
-        llm = ChatAzureOpenAI(deployment_name=self.openai_deployment, temperature=overrides.get("temperature") or 0.3, openai_api_key=openai.api_key)
+        print(prompt)
+        llm = AzureChatOpenAI(deployment_name=self.openai_deployment, temperature=0, openai_api_base=openai.api_base, openai_api_version=openai.api_version, openai_api_type=openai.api_type, openai_api_key=openai.api_key)
         chain = LLMChain(llm = llm, prompt = prompt)
         agent_exec = AgentExecutor.from_agent_and_tools(
             agent = ZeroShotAgent(llm_chain = chain, tools = tools),

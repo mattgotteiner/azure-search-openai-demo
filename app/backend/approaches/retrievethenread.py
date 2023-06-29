@@ -81,12 +81,12 @@ Answer:
         content = "\n".join(results)
 
         prompt = (overrides.get("prompt_template") or self.template).format(q=q, retrieved=content)
-        completion = openai.Completion.create(
+        completion = openai.ChatCompletion.create(
             engine=self.openai_deployment, 
-            prompt=prompt, 
+            messages=[{"role": "user", "content": prompt}], 
             temperature=overrides.get("temperature") or 0.3, 
             max_tokens=1024, 
             n=1, 
-            stop=["\n"])
+            stop=["<|im_end|>", "<|im_start|>"])
 
-        return {"data_points": results, "answer": completion.choices[0].text, "thoughts": f"Question:<br>{query_text}<br><br>Prompt:<br>" + prompt.replace('\n', '<br>')}
+        return {"data_points": results, "answer": completion.choices[0].message.content, "thoughts": f"Question:<br>{query_text}<br><br>Prompt:<br>" + prompt.replace('\n', '<br>')}
