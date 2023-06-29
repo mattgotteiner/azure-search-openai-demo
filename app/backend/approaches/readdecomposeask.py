@@ -12,6 +12,16 @@ from langchainadapters import HtmlCallbackHandler
 from text import nonewlines
 from typing import Any, List, Optional
 
+class ChatAzureOpenAI(AzureOpenAI):
+    @property
+    def _invocation_params(self):
+        params = super()._invocation_params
+        # fix InvalidRequestError: logprobs, best_of and echo parameters are not available on gpt-35-turbo model.
+        params.pop('logprobs', None)
+        params.pop('best_of', None)
+        params.pop('echo', None)
+        return params
+
 class ReadDecomposeAsk(Approach):
     def __init__(self, search_client: SearchClient, openai_deployment: str, embedding_deployment: str, sourcepage_field: str, content_field: str):
         self.search_client = search_client

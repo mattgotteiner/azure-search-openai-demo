@@ -54,7 +54,7 @@ var resourceToken = toLower(uniqueString(subscription().id, environmentName, loc
 var tags = { 'azd-env-name': environmentName }
 var chatGptDeployment = empty(chatGptDeploymentName) ? 'chat' : chatGptDeploymentName
 var chatGptDeploymentModelName = empty(chatGptModelName) ? 'gpt-35-turbo' : chatGptModelName
-var chatGptDeploymentModelVersion = empty(chatGptModelVersion) ? '0301' : chatGptModelVersion
+var chatGptDeploymentModelVersion = empty(chatGptModelVersion) ? '0301' : '${chatGptModelVersion}' 
 var embeddingDeployment = empty(embeddingDeploymentName) ? 'embedding' : embeddingDeploymentName
 
 // Organize resources in a resource group
@@ -132,6 +132,7 @@ module openAi 'core/ai/cognitiveservices.bicep' = {
       name: openAiSkuName
     }
     deployments: [
+      /*
       {
         name: chatGptDeployment
         model: {
@@ -141,9 +142,10 @@ module openAi 'core/ai/cognitiveservices.bicep' = {
         }
         sku: {
           name: 'Standard'
-          capacity: chatGptDeploymentCapacity
         }
       }
+      */
+      /*
       {
         name: embeddingDeployment
         model: {
@@ -151,8 +153,8 @@ module openAi 'core/ai/cognitiveservices.bicep' = {
           name: embeddingModelName
           version: embeddingModelVersion
         }
-        capacity: embeddingDeploymentCapacity
       }
+      */
     ]
   }
 }

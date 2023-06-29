@@ -12,6 +12,16 @@ from text import nonewlines
 from lookuptool import CsvLookupTool
 from typing import Any
 
+class ChatAzureOpenAI(AzureOpenAI):
+    @property
+    def _invocation_params(self):
+        params = super()._invocation_params
+        # fix InvalidRequestError: logprobs, best_of and echo parameters are not available on gpt-35-turbo model.
+        params.pop('logprobs', None)
+        params.pop('best_of', None)
+        params.pop('echo', None)
+        return params
+
 # Attempt to answer questions by iteratively evaluating the question to see what information is missing, and once all information
 # is present then formulate an answer. Each iteration consists of two parts: first use GPT to see if we need more information, 
 # second if more data is needed use the requested "tool" to retrieve it. The last call to GPT answers the actual question.
@@ -102,7 +112,7 @@ Thought: {agent_scratchpad}"""
             prefix=overrides.get("prompt_template_prefix") or self.template_prefix,
             suffix=overrides.get("prompt_template_suffix") or self.template_suffix,
             input_variables = ["input", "agent_scratchpad"])
-        llm = AzureOpenAI(deployment_name=self.openai_deployment, temperature=overrides.get("temperature") or 0.3, openai_api_key=openai.api_key)
+        llm = ChatAzureOpenAI(deployment_name=self.openai_deployment, temperature=overrides.get("temperature") or 0.3, openai_api_key=openai.api_key)
         chain = LLMChain(llm = llm, prompt = prompt)
         agent_exec = AgentExecutor.from_agent_and_tools(
             agent = ZeroShotAgent(llm_chain = chain, tools = tools),

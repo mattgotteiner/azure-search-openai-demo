@@ -85,4 +85,8 @@ class HtmlCallbackHandler (BaseCallbackHandler):
         self, finish: AgentFinish, color: Optional[str] = None, **kwargs: Any
     ) -> None:
         """Run on agent end."""
-        self.html += f"<span style='color:{color}'>{ch(finish.log)}</span><br>"
+        answer = finish.log
+        if 'Final Answer:' in answer:
+            lines = answer.split('\n')
+            answer = '\n'.join(lines[0:2]).replace('<|im_end|>', '')
+        self.html += f"<span style='color:{color}'>{ch(answer)}</span><br>"

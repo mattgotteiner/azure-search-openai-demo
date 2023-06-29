@@ -50,6 +50,9 @@
     "chatGptModelName": {
       "value": "${AZURE_OPENAI_CHATGPT_MODEL}"
     },
+    "chatGptModelVersion": {
+      "value": "${AZURE_OPENAI_CHATGPT_VERSION}"
+    },
     "embeddingDeploymentName": {
       "value": "${AZURE_OPENAI_EMBEDDING_DEPLOYMENT}"
     }

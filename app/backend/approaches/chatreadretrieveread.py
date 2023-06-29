@@ -43,10 +43,9 @@ Question:
 Search query:
 """
 
-    def __init__(self, search_client: SearchClient, chatgpt_deployment: str, gpt_deployment: str, embedding_deployment: str, sourcepage_field: str, content_field: str):
+    def __init__(self, search_client: SearchClient, chatgpt_deployment: str, embedding_deployment: str, sourcepage_field: str, content_field: str):
         self.search_client = search_client
         self.chatgpt_deployment = chatgpt_deployment
-        self.gpt_deployment = gpt_deployment
         self.embedding_deployment = embedding_deployment
         self.sourcepage_field = sourcepage_field
         self.content_field = content_field
@@ -59,14 +58,14 @@ Search query:
 
         # STEP 1: Generate an optimized keyword search query based on the chat history and the last question
         prompt = self.query_prompt_template.format(chat_history=self.get_chat_history_as_text(history, include_last_turn=False), question=history[-1]["user"])
-        completion = openai.Completion.create(
-            engine=self.gpt_deployment, 
-            prompt=prompt, 
+        completion = openai.ChatCompletion.create(
+            engine=self.chatgpt_deployment, 
+            messages=[{"role": "user", "content": prompt}], 
             temperature=0.0, 
-            max_tokens=32, 
+            max_tokens=1024,
             n=1, 
-            stop=["\n"])
-        query_text = completion.choices[0].text
+            stop=["<|im_end|>", "<|im_start|>"])
+        query_text = completion.choices[0].message.content
 
         # STEP 2: Retrieve relevant documents from the search index with the GPT optimized query
 
@@ -110,15 +109,15 @@ Search query:
             prompt = prompt_override.format(sources=content, chat_history=self.get_chat_history_as_text(history), follow_up_questions_prompt=follow_up_questions_prompt)
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
-        completion = openai.Completion.create(
+        completion = openai.ChatCompletion.create(
             engine=self.chatgpt_deployment, 
-            prompt=prompt, 
+            messages=[{"role": "user", "content": prompt}], 
             temperature=overrides.get("temperature") or 0.7, 
             max_tokens=1024, 
             n=1, 
             stop=["<|im_end|>", "<|im_start|>"])
 
-        return {"data_points": results, "answer": completion.choices[0].text, "thoughts": f"Searched for:<br>{query_text}<br><br>Prompt:<br>" + prompt.replace('\n', '<br>')}
+        return {"data_points": results, "answer": completion.choices[0].message.content, "thoughts": f"Searched for:<br>{query_text}<br><br>Prompt:<br>" + prompt.replace('\n', '<br>')}
     
     def get_chat_history_as_text(self, history: Sequence[dict[str, str]], include_last_turn: bool=True, approx_max_tokens: int=1000) -> str:
         history_text = ""
