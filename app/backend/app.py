@@ -4,6 +4,17 @@ import mimetypes
 import time
 import logging
 import openai
+import traceback
+import base64
+import jwt
+import json
+from cryptography.x509 import load_pem_x509_certificate
+from cryptography.hazmat.backends import default_backend
+
+PEMSTART = "-----BEGIN CERTIFICATE-----\n"
+PEMEND = "\n-----END CERTIFICATE-----\n"
+import requests
+
 from flask import Flask, request, jsonify, send_file, abort
 from azure.identity import DefaultAzureCredential
 from azure.search.documents import SearchClient
@@ -71,6 +82,38 @@ chat_approaches = {
                                         KB_FIELDS_CONTENT)
 }
 
+tenant_id='f7cfd049-4e12-4d6b-af39-1230c52cbaea'
+client_id='dadf5eb1-747c-4807-a4fe-23a5702124bf'
+jwks_uri = f'https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys'
+jwks = requests.get(jwks_uri).json()
+
+def decode_claims(token):
+    unverified_header = jwt.get_unverified_header(token)
+    for key in jwks["keys"]:
+        if key["kid"] == unverified_header["kid"]:
+            rsa_key = key["x5c"][0]
+
+    if rsa_key:
+        cert_str = PEMSTART + rsa_key + PEMEND
+        cert_obj = load_pem_x509_certificate(cert_str.encode('utf-8'), default_backend())
+        public_key = cert_obj.public_key()
+        try:
+            payload = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                issuer=f'https://sts.windows.net/{tenant_id}/',
+                audience='api://dadf5eb1-747c-4807-a4fe-23a5702124bf'
+            )
+            return payload
+        except jwt.ExpiredSignatureError as jwt_expired_exc:
+            raise Exception({"code": "token_expired","description": "token is expired"})
+        except jwt.JWTClaimsError as jwt_claims_exc:
+            raise Exception({"code": "invalid_claims","description":"incorrect claims,""please check the audience and issuer"})
+        except Exception as exc:
+            raise Exception({"code": "invalid_header","description":"Unable to parse authorization"" token."})
+    raise Exception({"code": "invalid_header","description": "Unable to find appropriate key"})
+
 app = Flask(__name__)
 
 @app.route("/", defaults={"path": "index.html"})
@@ -112,6 +155,19 @@ def ask():
     
 @app.route("/chat", methods=["POST"])
 def chat():
+    # Get the access token from the Authorization header
+    auth_header = request.headers.get('Authorization')
+    print(auth_header)
+
+    try:
+        access_token = auth_header.split(' ')[1]  # Assuming the header format is "Bearer <access_token>"
+        # Extract the claims
+        claims = decode_claims(access_token)
+        # Use the claims as per your requirement
+        print('claims', claims)
+    except jwt.DecodeError:
+        print('invalid access token! no claims...')
+        traceback.print_exc()
     ensure_openai_token()
     if not request.json:
         return jsonify({"error": "request must be json"}), 400

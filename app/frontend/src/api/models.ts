@@ -1,3 +1,5 @@
+import { IPublicClientApplication } from '@azure/msal-browser';
+
 export const enum Approaches {
     RetrieveThenRead = "rtr",
     ReadRetrieveRead = "rrr",
@@ -21,6 +23,8 @@ export type AskRequestOverrides = {
     promptTemplatePrefix?: string;
     promptTemplateSuffix?: string;
     suggestFollowupQuestions?: boolean;
+    useSecurityGroupFilter?: boolean;
+    msalInstance?: IPublicClientApplication
 };
 
 export type AskRequest = {

@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect } from "react";
 import { Checkbox, Panel, DefaultButton, TextField, SpinButton, Dropdown, IDropdownOption } from "@fluentui/react";
 import { SparkleFilled } from "@fluentui/react-icons";
+import { MsalAuthenticationTemplate, useMsal } from "@azure/msal-react";
+
 
 import styles from "./Chat.module.css";
 
@@ -14,6 +16,7 @@ import { SettingsButton } from "../../components/SettingsButton";
 import { ClearChatButton } from "../../components/ClearChatButton";
 
 const Chat = () => {
+    const { instance, inProgress } = useMsal();
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
     const [promptTemplate, setPromptTemplate] = useState<string>("");
     const [retrieveCount, setRetrieveCount] = useState<number>(3);
@@ -22,6 +25,7 @@ const Chat = () => {
     const [useSemanticCaptions, setUseSemanticCaptions] = useState<boolean>(false);
     const [excludeCategory, setExcludeCategory] = useState<string>("");
     const [useSuggestFollowupQuestions, setUseSuggestFollowupQuestions] = useState<boolean>(false);
+    const [useSecurityGroupFilter, setUseSecurityGroupFilter] = useState<boolean>(false);
 
     const lastQuestionRef = useRef<string>("");
     const chatMessageStreamEnd = useRef<HTMLDivElement | null>(null);
@@ -55,7 +59,9 @@ const Chat = () => {
                     retrievalMode: retrievalMode,
                     semanticRanker: useSemanticRanker,
                     semanticCaptions: useSemanticCaptions,
-                    suggestFollowupQuestions: useSuggestFollowupQuestions
+                    suggestFollowupQuestions: useSuggestFollowupQuestions,
+                    useSecurityGroupFilter: useSecurityGroupFilter,
+                    msalInstance: instance
                 }
             };
             const result = await chatApi(request);
@@ -103,6 +109,10 @@ const Chat = () => {
 
     const onUseSuggestFollowupQuestionsChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
         setUseSuggestFollowupQuestions(!!checked);
+    };
+
+    const onUseSecurityGroupFilterChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
+        setUseSecurityGroupFilter(!!checked);
     };
 
     const onExampleClicked = (example: string) => {
@@ -250,6 +260,12 @@ const Chat = () => {
                         checked={useSuggestFollowupQuestions}
                         label="Suggest follow-up questions"
                         onChange={onUseSuggestFollowupQuestionsChange}
+                    />
+                    <Checkbox
+                        className={styles.chatSettingsSeparator}
+                        checked={useSecurityGroupFilter}
+                        label="Apply security group filter"
+                        onChange={onUseSecurityGroupFilterChange}
                     />
                     <Dropdown
                         className={styles.chatSettingsSeparator}
