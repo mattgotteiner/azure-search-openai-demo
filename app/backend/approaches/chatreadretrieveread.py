@@ -57,14 +57,18 @@ If you cannot generate a search query, return just the number 0.
         self.content_field = content_field
         self.chatgpt_token_limit = get_token_limit(chatgpt_model)
 
-    def run(self, history: Sequence[dict[str, str]], overrides: dict[str, Any]) -> Any:
+    def run(self, history: Sequence[dict[str, str]], overrides: dict[str, Any], claims: dict[str, Any]) -> Any:
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top") or 3
         exclude_category = overrides.get("exclude_category") or None
         filter = "category ne '{}'".format(exclude_category.replace("'", "''")) if exclude_category else None
+        if overrides.get("use_security_group_filter"):
+            security_filter = f"groups/any(g:search.in(g, '{', '.join(claims['groups'])}'))"
+            filter = f"{filter} and {security_filter}" if filter else security_filter
 
+        print('filter', filter)
         user_q = 'Generate search query for: ' + history[-1]["user"]
 
         # STEP 1: Generate an optimized keyword search query based on the chat history and the last question

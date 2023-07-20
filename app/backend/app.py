@@ -139,6 +139,17 @@ def content_file(path):
     
 @app.route("/ask", methods=["POST"])
 def ask():
+    # Get the access token from the Authorization header
+    auth_header = request.headers.get('Authorization')
+
+    try:
+        access_token = auth_header.split(' ')[1]  # Assuming the header format is "Bearer <access_token>"
+        # Extract the claims
+        claims = decode_claims(access_token)
+        # Use the claims as per your requirement
+    except jwt.DecodeError:
+        print('invalid access token! no claims...')
+        traceback.print_exc()
     ensure_openai_token()
     if not request.json:
         return jsonify({"error": "request must be json"}), 400
@@ -147,7 +158,7 @@ def ask():
         impl = ask_approaches.get(approach)
         if not impl:
             return jsonify({"error": "unknown approach"}), 400
-        r = impl.run(request.json["question"], request.json.get("overrides") or {})
+        r = impl.run(request.json["question"], request.json.get("overrides") or {}, claims or {})
         return jsonify(r)
     except Exception as e:
         logging.exception("Exception in /ask")
@@ -157,14 +168,12 @@ def ask():
 def chat():
     # Get the access token from the Authorization header
     auth_header = request.headers.get('Authorization')
-    print(auth_header)
 
     try:
         access_token = auth_header.split(' ')[1]  # Assuming the header format is "Bearer <access_token>"
         # Extract the claims
         claims = decode_claims(access_token)
         # Use the claims as per your requirement
-        print('claims', claims)
     except jwt.DecodeError:
         print('invalid access token! no claims...')
         traceback.print_exc()
@@ -176,7 +185,7 @@ def chat():
         impl = chat_approaches.get(approach)
         if not impl:
             return jsonify({"error": "unknown approach"}), 400
-        r = impl.run(request.json["history"], request.json.get("overrides") or {})
+        r = impl.run(request.json["history"], request.json.get("overrides") or {}, claims or {})
         return jsonify(r)
     except Exception as e:
         logging.exception("Exception in /chat")

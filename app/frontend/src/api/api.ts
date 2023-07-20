@@ -78,7 +78,8 @@ export async function chatApi(options: ChatRequest): Promise<AskResponse> {
                 prompt_template_prefix: options.overrides?.promptTemplatePrefix,
                 prompt_template_suffix: options.overrides?.promptTemplateSuffix,
                 exclude_category: options.overrides?.excludeCategory,
-                suggest_followup_questions: options.overrides?.suggestFollowupQuestions
+                suggest_followup_questions: options.overrides?.suggestFollowupQuestions,
+                use_security_group_filter: options.overrides?.useSecurityGroupFilter
             }
         })
     });
