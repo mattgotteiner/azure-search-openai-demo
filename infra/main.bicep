@@ -58,9 +58,19 @@ param chatGptDeploymentName string // Set in main.parameters.json
 param chatGptDeploymentCapacity int = 30
 param chatGptModelName string = (openAiHost == 'azure') ? 'gpt-35-turbo' : 'gpt-3.5-turbo'
 param chatGptModelVersion string = '0613'
-param embeddingDeploymentName string = 'embedding'
+param embeddingDeploymentName string // Set in main.parameters.json
 param embeddingDeploymentCapacity int = 30
 param embeddingModelName string = 'text-embedding-ada-002'
+
+// Used for the optional login and document level access control system
+param useAuthentication bool = false
+param serverAppId string = ''
+@secure()
+param serverAppSecret string = ''
+param clientAppId string = ''
+
+// Used for optional CORS support for alternate frontends
+param allowedOrigin string = '' // should start with https://, shouldn't end with a /
 
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
@@ -136,6 +146,7 @@ module backend 'core/host/appservice.bicep' = {
     appCommandLine: 'python3 -m gunicorn main:app'
     scmDoBuildDuringDeployment: true
     managedIdentity: true
+    allowedOrigins: [allowedOrigin]
     appSettings: {
       AZURE_STORAGE_ACCOUNT: storage.outputs.name
       AZURE_STORAGE_CONTAINER: storageContainerName
@@ -153,6 +164,14 @@ module backend 'core/host/appservice.bicep' = {
       // Used only with non-Azure OpenAI deployments
       OPENAI_API_KEY: openAiApiKey
       OPENAI_ORGANIZATION: openAiApiOrganization
+      // Optional login and document level access control system
+      AZURE_USE_AUTHENTICATION: useAuthentication
+      AZURE_SERVER_APP_ID: serverAppId
+      AZURE_SERVER_APP_SECRET: serverAppSecret
+      AZURE_CLIENT_APP_ID: clientAppId
+      AZURE_TENANT_ID: tenant().tenantId
+      // CORS support, for frontends on other hosts
+      ALLOWED_ORIGIN: allowedOrigin
     }
   }
 }
