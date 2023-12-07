@@ -47,6 +47,9 @@
     "searchServiceSkuName": {
       "value": "${AZURE_SEARCH_SERVICE_SKU=standard}"
     },
+    "searchServiceSemanticSearchSku": {
+      "value": "${AZURE_SEARCH_SEMANTIC_SEARCH_SKU=free}"
+    },
     "searchQueryLanguage": {
       "value": "${AZURE_SEARCH_QUERY_LANGUAGE=en-us}"
     },
