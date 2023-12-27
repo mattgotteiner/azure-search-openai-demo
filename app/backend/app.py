@@ -31,6 +31,7 @@ from quart import (
     send_from_directory,
     session,
 )
+from quart.sessions import SessionMixin
 from quart_cors import cors
 
 from approaches.approach import Approach
@@ -47,10 +48,16 @@ CONFIG_ASK_VISION_APPROACH = "ask_vision_approach"
 CONFIG_CHAT_VISION_APPROACH = "chat_vision_approach"
 CONFIG_CHAT_APPROACH = "chat_approach"
 CONFIG_BLOB_CONTAINER_CLIENT = "blob_container_client"
-CONFIG_AUTH_CLIENT = "auth_client"
+CONFIG_SEARCH_INDEX = "search_index"
 CONFIG_GPT4V_DEPLOYED = "gpt4v_deployed"
 CONFIG_SEARCH_CLIENT = "search_client"
 CONFIG_OPENAI_CLIENT = "openai_client"
+CONFIG_USE_AUTHENTICATION = "use_authentication"
+CONFIG_ENFORCE_AUTHENTICATION = "enforce_authentication"
+CONFIG_SERVER_APP_ID = "server_app_id"
+CONFIG_SERVER_APP_SECRET = "server_app_secret"
+CONFIG_CLIENT_APP_ID = "client_app_id"
+CONFIG_AUTH_TENANT_ID = "auth_tenant_id"
 ERROR_MESSAGE = """The app encountered an error processing your request.
 If you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.
 Error type: {error_type}
@@ -131,7 +138,8 @@ async def ask():
         return jsonify({"error": "request must be json"}), 415
     request_json = await request.get_json()
     context = request_json.get("context", {})
-    auth_helper = current_app.config[CONFIG_AUTH_CLIENT]
+    # TODO: what to do here
+    auth_helper = None
     try:
         context["auth_claims"] = await auth_helper.get_auth_claims_if_enabled(request.headers)
         use_gpt4v = context.get("overrides", {}).get("use_gpt4v", False)
@@ -170,7 +178,8 @@ async def chat():
         return jsonify({"error": "request must be json"}), 415
     request_json = await request.get_json()
     context = request_json.get("context", {})
-    auth_helper = current_app.config[CONFIG_AUTH_CLIENT]
+    # todo: what to do here
+    auth_helper = None
     try:
         context["auth_claims"] = await auth_helper.get_auth_claims_if_enabled(request.headers)
         use_gpt4v = context.get("overrides", {}).get("use_gpt4v", False)
@@ -200,7 +209,8 @@ async def chat():
 # Send MSAL.js settings to the client UI
 @bp.route("/auth_setup", methods=["GET"])
 def auth_setup():
-    auth_helper = current_app.config[CONFIG_AUTH_CLIENT]
+    # todo: What to do here
+    auth_helper = None
     return jsonify(auth_helper.get_auth_setup_for_client())
 
 
@@ -250,6 +260,13 @@ async def setup_clients():
 
     USE_GPT4V = os.getenv("USE_GPT4V", "").lower() == "true"
 
+    current_app.config[CONFIG_USE_AUTHENTICATION] = AZURE_USE_AUTHENTICATION
+    current_app.config[CONFIG_ENFORCE_AUTHENTICATION] = AZURE_ENFORCE_ACCESS_CONTROL
+    current_app.config[CONFIG_SERVER_APP_ID] = AZURE_SERVER_APP_ID
+    current_app.config[CONFIG_SERVER_APP_SECRET] = AZURE_SERVER_APP_SECRET
+    current_app.config[CONFIG_CLIENT_APP_ID] = AZURE_CLIENT_APP_ID
+    current_app.config[CONFIG_AUTH_TENANT_ID] = AZURE_AUTH_TENANT_ID
+
     # Setup secret_key for secure cookie authentication
     # See https://quart.palletsprojects.com/en/latest/how_to_guides/session_storage.html for more information
     current_app.secret_key = AZURE_AUTHENTICATION_SECRET_KEY
@@ -274,18 +291,6 @@ async def setup_clients():
         account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net", credential=azure_credential
     )
     blob_container_client = blob_client.get_container_client(AZURE_STORAGE_CONTAINER)
-
-    # Set up authentication helper
-    # TODO make per-request
-    auth_helper = AuthenticationHelper(
-        search_index=(await search_index_client.get_index(AZURE_SEARCH_INDEX)) if AZURE_USE_AUTHENTICATION else None,
-        use_authentication=AZURE_USE_AUTHENTICATION,
-        server_app_id=AZURE_SERVER_APP_ID,
-        server_app_secret=AZURE_SERVER_APP_SECRET,
-        client_app_id=AZURE_CLIENT_APP_ID,
-        tenant_id=AZURE_AUTH_TENANT_ID,
-        require_access_control=AZURE_ENFORCE_ACCESS_CONTROL,
-    )
 
     vision_key = None
     if VISION_SECRET_NAME and AZURE_KEY_VAULT_NAME:  # Cognitive vision keys are stored in keyvault
@@ -316,7 +321,7 @@ async def setup_clients():
     current_app.config[CONFIG_OPENAI_CLIENT] = openai_client
     current_app.config[CONFIG_SEARCH_CLIENT] = search_client
     current_app.config[CONFIG_BLOB_CONTAINER_CLIENT] = blob_container_client
-    current_app.config[CONFIG_AUTH_CLIENT] = auth_helper
+    current_app.config[CONFIG_SEARCH_INDEX] = await search_index_client.get_index(AZURE_SEARCH_INDEX)
 
     current_app.config[CONFIG_GPT4V_DEPLOYED] = bool(USE_GPT4V)
 
@@ -325,7 +330,6 @@ async def setup_clients():
     current_app.config[CONFIG_ASK_APPROACH] = RetrieveThenReadApproach(
         search_client=search_client,
         openai_client=openai_client,
-        auth_helper=auth_helper,
         chatgpt_model=OPENAI_CHATGPT_MODEL,
         chatgpt_deployment=AZURE_OPENAI_CHATGPT_DEPLOYMENT,
         embedding_model=OPENAI_EMB_MODEL,
@@ -344,7 +348,6 @@ async def setup_clients():
             search_client=search_client,
             openai_client=openai_client,
             blob_container_client=blob_container_client,
-            auth_helper=auth_helper,
             vision_endpoint=AZURE_VISION_ENDPOINT,
             vision_key=vision_key,
             gpt4v_deployment=AZURE_OPENAI_GPT4V_DEPLOYMENT,
@@ -361,7 +364,6 @@ async def setup_clients():
             search_client=search_client,
             openai_client=openai_client,
             blob_container_client=blob_container_client,
-            auth_helper=auth_helper,
             vision_endpoint=AZURE_VISION_ENDPOINT,
             vision_key=vision_key,
             gpt4v_deployment=AZURE_OPENAI_GPT4V_DEPLOYMENT,
@@ -377,7 +379,6 @@ async def setup_clients():
     current_app.config[CONFIG_CHAT_APPROACH] = ChatReadRetrieveReadApproach(
         search_client=search_client,
         openai_client=openai_client,
-        auth_helper=auth_helper,
         chatgpt_model=OPENAI_CHATGPT_MODEL,
         chatgpt_deployment=AZURE_OPENAI_CHATGPT_DEPLOYMENT,
         embedding_model=OPENAI_EMB_MODEL,
@@ -386,6 +387,18 @@ async def setup_clients():
         content_field=KB_FIELDS_CONTENT,
         query_language=AZURE_SEARCH_QUERY_LANGUAGE,
         query_speller=AZURE_SEARCH_QUERY_SPELLER,
+    )
+
+
+def create_auth_helper(session: SessionMixin):
+    return AuthenticationHelper(
+        search_index=current_app.config[CONFIG_SEARCH_INDEX],
+        use_authentication=current_app.config[CONFIG_USE_AUTHENTICATION],
+        server_app_id=current_app.config[CONFIG_SERVER_APP_ID],
+        server_app_secret=current_app.config[CONFIG_SERVER_APP_SECRET],
+        client_app_id=current_app.config[CONFIG_CLIENT_APP_ID],
+        tenant_id=current_app.config[CONFIG_AUTH_TENANT_ID],
+        require_access_control=current_app.CONFIG[CONFIG_ENFORCE_AUTHENTICATION],
     )
 
 
