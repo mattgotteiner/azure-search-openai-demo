@@ -60,7 +60,9 @@ class BlobManager:
             page_count = len(reader.pages)
         doc = fitz.open(file.content.name)
         sas_uris = []
-        start_time = datetime.datetime.now(datetime.timezone.utc)
+        # Subtract 15 minutes from the start time to account for potential clock drift
+        # See https://learn.microsoft.com/azure/storage/common/storage-sas-overview#best-practices-when-using-sas for more information
+        start_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=15)
         expiry_time = start_time + datetime.timedelta(days=1)
 
         font = None

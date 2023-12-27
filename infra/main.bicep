@@ -86,6 +86,8 @@ param authTenantId string = ''
 // Used for the optional login and document level access control system
 param useAuthentication bool = false
 param enforceAccessControl bool = false
+@secure()
+param authenticationSecretKey string = ''
 param serverAppId string = ''
 @secure()
 param serverAppSecret string = ''
@@ -124,10 +126,6 @@ resource openAiResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' exi
 
 resource formRecognizerResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(formRecognizerResourceGroupName)) {
   name: !empty(formRecognizerResourceGroupName) ? formRecognizerResourceGroupName : resourceGroup.name
-}
-
-resource computerVisionResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(computerVisionResourceGroupName)) {
-  name: !empty(computerVisionResourceGroupName) ? computerVisionResourceGroupName : resourceGroup.name
 }
 
 resource searchServiceResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(searchServiceResourceGroupName)) {
@@ -182,6 +180,53 @@ module appServicePlan 'core/host/appserviceplan.bicep' = {
   }
 }
 
+// Store secrets in a key vault
+module keyVault 'core/security/keyvault.bicep' = {
+  name: 'keyvault'
+  scope: keyVaultResourceGroup
+  params: {
+    name: keyVaultName
+    location: location
+    principalId: principalId
+  }
+}
+
+module webKVAccess 'core/security/keyvault-access.bicep' = {
+  name: 'web-keyvault-access'
+  scope: keyVaultResourceGroup
+  params: {
+    keyVaultName: keyVault.outputs.name
+    principalId: backend.outputs.identityPrincipalId
+  }
+}
+
+// Setup auth secret if using auth
+module keyVaultAuthenticationSecretKey 'core/security/keyvault-secret.bicep' = if (useAuthentication) {
+  name: 'keyvault-secret-authentication'
+  scope: keyVaultResourceGroup
+  params: {
+    keyVaultName: keyVault.outputs.name
+    name: 'authenticationSecretKey'
+    secretValue: authenticationSecretKey
+  }
+}
+
+// Setup vision if using GPT4V
+module computerVision 'computerVision.bicep' = if (useGPT4V) {
+  name: 'computerVision'
+  params: {
+    tags: tags
+    keyVaultResourceGroupName: keyVaultResourceGroupName
+    keyVaultName: keyVault.outputs.name
+    computerVisionResourceGroupName: computerVisionResourceGroupName
+    computerVisionName: computerVisionName
+    computerVisionSecretName: computerVisionSecretName
+    computerVisionResourceGroupLocation: computerVisionResourceGroupLocation
+    computerVisionSkuName: computerVisionSkuName
+    resourceGroupName: resourceGroupName
+  }
+}
+
 // The application frontend
 module backend 'core/host/appservice.bicep' = {
   name: 'web'
@@ -208,7 +253,7 @@ module backend 'core/host/appservice.bicep' = {
       AZURE_SEARCH_SERVICE: searchService.outputs.name
       AZURE_VISION_ENDPOINT: useGPT4V ? computerVision.outputs.endpoint : ''
       VISION_SECRET_NAME: useGPT4V ? computerVisionSecretName: ''
-      AZURE_KEY_VAULT_NAME: useGPT4V ? keyVaultName: ''
+      AZURE_KEY_VAULT_NAME: keyVaultName
       AZURE_SEARCH_QUERY_LANGUAGE: searchQueryLanguage
       AZURE_SEARCH_QUERY_SPELLER: searchQuerySpeller
       APPLICATIONINSIGHTS_CONNECTION_STRING: useApplicationInsights ? monitoring.outputs.applicationInsightsConnectionString : ''
@@ -228,6 +273,7 @@ module backend 'core/host/appservice.bicep' = {
       // Optional login and document level access control system
       AZURE_USE_AUTHENTICATION: useAuthentication
       AZURE_ENFORCE_ACCESS_CONTROL: enforceAccessControl
+      AZURE_AUTHENTICATION_SECRET_KEY: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=authenticationSecretKey)'
       AZURE_SERVER_APP_ID: serverAppId
       AZURE_SERVER_APP_SECRET: serverAppSecret
       AZURE_CLIENT_APP_ID: clientAppId
@@ -310,53 +356,6 @@ module formRecognizer 'core/ai/cognitiveservices.bicep' = {
     sku: {
       name: formRecognizerSkuName
     }
-  }
-}
-
-module computerVision 'core/ai/cognitiveservices.bicep' = if (useGPT4V) {
-  name: 'computerVision'
-  scope: computerVisionResourceGroup
-  params: {
-    name: computerVisionName
-    kind: 'ComputerVision'
-    location: computerVisionResourceGroupLocation
-    tags: tags
-    sku: {
-      name: computerVisionSkuName
-    }
-  }
-}
-
-
-// Currently, we only need Key Vault for storing Computer Vision key,
-// which is only used for GPT-4V.
-module keyVault 'core/security/keyvault.bicep' = if (useGPT4V) {
-  name: 'keyvault'
-  scope: keyVaultResourceGroup
-  params: {
-    name: keyVaultName
-    location: location
-    principalId: principalId
-  }
-}
-
-module webKVAccess 'core/security/keyvault-access.bicep' = if (useGPT4V) {
-  name: 'web-keyvault-access'
-  scope: keyVaultResourceGroup
-  params: {
-    keyVaultName: keyVaultName
-    principalId: backend.outputs.identityPrincipalId
-  }
-}
-
-module secrets 'secrets.bicep' = if (useGPT4V) {
-  name: 'secrets'
-  scope: keyVaultResourceGroup
-  params: {
-    keyVaultName: keyVaultName
-    storeComputerVisionSecret: useGPT4V
-    computerVisionId: useGPT4V ? computerVision.outputs.id : ''
-    computerVisionSecretName: computerVisionSecretName
   }
 }
 
@@ -544,7 +543,7 @@ output OPENAI_ORGANIZATION string = (openAiHost == 'openai') ? openAiApiOrganiza
 
 output AZURE_VISION_ENDPOINT string = useGPT4V ? computerVision.outputs.endpoint : ''
 output VISION_SECRET_NAME string = useGPT4V ? computerVisionSecretName : ''
-output AZURE_KEY_VAULT_NAME string = useGPT4V ? keyVault.outputs.name : ''
+output AZURE_KEY_VAULT_NAME string = keyVault.outputs.name
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
 output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name

@@ -83,11 +83,17 @@
     "useGPT4V": {
       "value": "${USE_GPT4V=false}"
     },
+    "keyVaultServiceName": {
+      "value": "${AZURE_KEY_VAULT_NAME}"
+    },
     "useAuthentication": {
       "value": "${AZURE_USE_AUTHENTICATION=false}"
     },
     "enforceAccessControl": {
       "value": "${AZURE_ENFORCE_ACCESS_CONTROL=false}"
+    },
+    "authenticationSecretKey": {
+      "value": "$(secretOrRandomPassword ${AZURE_KEY_VAULT_NAME} authenticationSecretKey)"
     },
     "tenantId": {
       "value": "${AZURE_TENANT_ID}"
