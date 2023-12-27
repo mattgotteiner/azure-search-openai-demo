@@ -4,6 +4,7 @@ import json
 import logging
 import mimetypes
 import os
+import secrets
 from pathlib import Path
 from typing import AsyncGenerator, cast
 
@@ -28,6 +29,7 @@ from quart import (
     request,
     send_file,
     send_from_directory,
+    session,
 )
 from quart_cors import cors
 
@@ -234,6 +236,7 @@ async def setup_clients():
     AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
     AZURE_USE_AUTHENTICATION = os.getenv("AZURE_USE_AUTHENTICATION", "").lower() == "true"
     AZURE_ENFORCE_ACCESS_CONTROL = os.getenv("AZURE_ENFORCE_ACCESS_CONTROL", "").lower() == "true"
+    AZURE_AUTHENTICATION_SECRET_KEY = os.getenv("AZURE_AUTHENTICATION_SECRET_KEY", secrets.token_urlsafe(16))
     AZURE_SERVER_APP_ID = os.getenv("AZURE_SERVER_APP_ID")
     AZURE_SERVER_APP_SECRET = os.getenv("AZURE_SERVER_APP_SECRET")
     AZURE_CLIENT_APP_ID = os.getenv("AZURE_CLIENT_APP_ID")
@@ -246,6 +249,10 @@ async def setup_clients():
     AZURE_SEARCH_QUERY_SPELLER = os.getenv("AZURE_SEARCH_QUERY_SPELLER", "lexicon")
 
     USE_GPT4V = os.getenv("USE_GPT4V", "").lower() == "true"
+
+    # Setup secret_key for secure cookie authentication
+    # See https://quart.palletsprojects.com/en/latest/how_to_guides/session_storage.html for more information
+    current_app.secret_key = AZURE_AUTHENTICATION_SECRET_KEY
 
     # Use the current user identity to authenticate with Azure OpenAI, AI Search and Blob Storage (no secrets needed,
     # just use 'az login' locally, and managed identity when deployed on Azure). If you need to use keys, use separate AzureKeyCredential instances with the
@@ -269,6 +276,7 @@ async def setup_clients():
     blob_container_client = blob_client.get_container_client(AZURE_STORAGE_CONTAINER)
 
     # Set up authentication helper
+    # TODO make per-request
     auth_helper = AuthenticationHelper(
         search_index=(await search_index_client.get_index(AZURE_SEARCH_INDEX)) if AZURE_USE_AUTHENTICATION else None,
         use_authentication=AZURE_USE_AUTHENTICATION,
@@ -379,6 +387,13 @@ async def setup_clients():
         query_language=AZURE_SEARCH_QUERY_LANGUAGE,
         query_speller=AZURE_SEARCH_QUERY_SPELLER,
     )
+
+
+# Persist user cookies across browser sessions
+# See https://quart.palletsprojects.com/en/latest/how_to_guides/session_storage.html for more information
+@bp.before_request
+def make_session_permanent():
+    session.permanent = True
 
 
 @bp.after_app_serving

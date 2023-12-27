@@ -342,6 +342,7 @@ module openAi 'core/ai/cognitiveservices.bicep' = {
       name: openAiSkuName
     }
     deployments: openAiDeployments
+    customSubDomainName: ''
   }
 }
 

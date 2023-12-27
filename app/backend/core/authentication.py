@@ -7,7 +7,7 @@ from typing import Any, Optional
 import aiohttp
 from azure.search.documents.indexes.models import SearchIndex
 from msal import ConfidentialClientApplication
-from msal.token_cache import TokenCache
+from msal.token_cache import SerializableTokenCache, TokenCache
 
 
 # AuthError is raised when the authentication token sent by the client UI cannot be parsed or there is an authentication error accessing the graph API
@@ -18,6 +18,22 @@ class AuthError(Exception):
 
     def __str__(self) -> str:
         return self.error or ""
+
+
+# Token cache to save tokens using secure cookies
+# Based off of https://github.com/AzureAD/microsoft-authentication-extensions-for-python/blob/dev/msal_extensions/token_cache.py
+class CookieTokenCache(SerializableTokenCache):
+    TOKEN_KEY = "token"
+
+    def __init__(self, session):
+        super().__init__()
+        self.session = session
+        if self.TOKEN_KEY in self.session:
+            self.deserialize(self.session[self.TOKEN_KEY])
+
+    def modify(self, credential_type, old_entry, new_key_value_pairs=None):
+        super().modify(credential_type, old_entry, new_key_value_pairs=new_key_value_pairs)
+        self.session[self.TOKEN_KEY] = self.serialize()
 
 
 class AuthenticationHelper:
