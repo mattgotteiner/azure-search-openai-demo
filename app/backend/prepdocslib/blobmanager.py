@@ -35,12 +35,14 @@ class BlobManager:
         resourceGroup: str,
         subscriptionId: str,
         store_page_images: bool = False,
+        skip_remove_page_check: bool = False,
     ):
         self.endpoint = endpoint
         self.credential = credential
         self.account = account
         self.container = container
         self.store_page_images = store_page_images
+        self.skip_remove_page_check = skip_remove_page_check
         self.resourceGroup = resourceGroup
         self.subscriptionId = subscriptionId
         self.user_delegation_key: Optional[UserDelegationKey] = None
@@ -153,11 +155,16 @@ class BlobManager:
             async for blob_path in blobs:
                 # This still supports PDFs split into individual pages, but we could remove in future to simplify code
                 if (
-                    prefix is not None
+                    not self.skip_remove_page_check
                     and (
-                        not re.match(rf"{prefix}-\d+\.pdf", blob_path) or not re.match(rf"{prefix}-\d+\.png", blob_path)
+                        prefix is not None
+                        and (
+                            not re.match(rf"{prefix}-\d+\.pdf", blob_path)
+                            or not re.match(rf"{prefix}-\d+\.png", blob_path)
+                        )
                     )
-                ) or (path is not None and blob_path == os.path.basename(path)):
+                    or (path is not None and blob_path == os.path.basename(path))
+                ):
                     continue
                 logger.info("Removing blob %s", blob_path)
                 await container_client.delete_blob(blob_path)

@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import os
 from typing import Optional, Union
 
 from azure.core.credentials import AzureKeyCredential
@@ -63,6 +64,7 @@ def setup_blob_manager(
     subscription_id: str,
     search_images: bool,
     storage_key: Union[str, None] = None,
+    skip_remove_page_check: bool = False,
 ):
     storage_creds: Union[AsyncTokenCredential, str] = azure_credential if storage_key is None else storage_key
     return BlobManager(
@@ -73,6 +75,7 @@ def setup_blob_manager(
         resourceGroup=storage_resource_group,
         subscriptionId=subscription_id,
         store_page_images=search_images,
+        skip_remove_page_check=skip_remove_page_check,
     )
 
 
@@ -329,6 +332,11 @@ if __name__ == "__main__":
         help="Remove references to this document from blob storage and the search index",
     )
     parser.add_argument(
+        "--skip-remove-page-check",
+        action="store_true",
+        help="Skips checking for pages when removing documents. May be necessary if your file names match the page pattern (file-number.pdf, file-number.png)",
+    )
+    parser.add_argument(
         "--removeall",
         action="store_true",
         help="Remove all blobs from blob storage and documents from the search index",
@@ -378,6 +386,10 @@ if __name__ == "__main__":
         # to avoid seeing the noisy INFO level logs from the Azure SDKs
         logger.setLevel(logging.INFO)
 
+    # If no files are specified, assume anything under the data directory should be ingested
+    if not args.files:
+        args.files = os.path.join(os.getcwd(), "data", "*")
+
     use_int_vectorization = args.useintvectorization and args.useintvectorization.lower() == "true"
 
     # Use the current user identity to connect to Azure services unless a key is explicitly set for any of them
@@ -413,6 +425,7 @@ if __name__ == "__main__":
         subscription_id=args.subscriptionid,
         search_images=args.searchimages,
         storage_key=clean_key_if_exists(args.storagekey),
+        skip_remove_page_check=args.skip_remove_page_check,
     )
     list_file_strategy = setup_list_file_strategy(
         azure_credential=azd_credential,

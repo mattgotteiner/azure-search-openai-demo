@@ -72,13 +72,12 @@ if ($env:AZURE_OPENAI_API_KEY) {
 }
 
 $cwd = (Get-Location)
-$dataArg = "`"$cwd/data/*`""
 $additionalArgs = ""
 if ($args) {
   $additionalArgs = "$args"
 }
 
-$argumentList = "./app/backend/prepdocs.py $dataArg --verbose " + `
+$argumentList = "./app/backend/prepdocs.py --verbose " + `
 "--subscriptionid $env:AZURE_SUBSCRIPTION_ID " + `
 "--storageaccount $env:AZURE_STORAGE_ACCOUNT --container $env:AZURE_STORAGE_CONTAINER --storageresourcegroup $env:AZURE_STORAGE_RESOURCE_GROUP " + `
 "--searchservice $env:AZURE_SEARCH_SERVICE --index $env:AZURE_SEARCH_INDEX " + `
