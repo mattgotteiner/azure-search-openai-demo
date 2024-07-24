@@ -1,3 +1,4 @@
+import io
 import os
 import sys
 from tempfile import NamedTemporaryFile
@@ -20,6 +21,18 @@ def blob_manager(monkeypatch):
         account=os.environ["AZURE_STORAGE_ACCOUNT"],
         resourceGroup=os.environ["AZURE_STORAGE_RESOURCE_GROUP"],
         subscriptionId=os.environ["AZURE_SUBSCRIPTION_ID"],
+    )
+
+@pytest.fixture
+def blob_manager_skip_remove_page_check(monkeypatch):
+    return BlobManager(
+        endpoint=f"https://{os.environ['AZURE_STORAGE_ACCOUNT']}.blob.core.windows.net",
+        credential=MockAzureCredential(),
+        container=os.environ["AZURE_STORAGE_CONTAINER"],
+        account=os.environ["AZURE_STORAGE_ACCOUNT"],
+        resourceGroup=os.environ["AZURE_STORAGE_RESOURCE_GROUP"],
+        subscriptionId=os.environ["AZURE_SUBSCRIPTION_ID"],
+        skip_remove_page_check=True
     )
 
 
@@ -75,6 +88,110 @@ async def test_upload_and_remove(monkeypatch, mock_env, blob_manager):
 
         await blob_manager.remove_blob(f.content.name)
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(sys.version_info.minor < 10, reason="requires Python 3.10 or higher")
+async def test_remove_no_skip_page_check(monkeypatch, mock_env, blob_manager):
+    filename = "test-p25.pdf"
+    content = io.BytesIO(b"")
+    content.name = filename
+    f = File(content)
+
+    # Set up mocks used by upload_blob
+    async def mock_exists(*args, **kwargs):
+        return True
+
+    monkeypatch.setattr("azure.storage.blob.aio.ContainerClient.exists", mock_exists)
+
+    async def mock_upload_blob(self, name, *args, **kwargs):
+        assert name == filename
+        return azure.storage.blob.aio.BlobClient.from_blob_url(
+            f"https://test.blob.core.windows.net/test/{filename}.pdf", credential=MockAzureCredential()
+        )
+
+    monkeypatch.setattr("azure.storage.blob.aio.ContainerClient.upload_blob", mock_upload_blob)
+
+    await blob_manager.upload_blob(f)
+    assert f.url == f"https://test.blob.core.windows.net/test/{filename}.pdf"
+
+    # Set up mocks used by remove_blob
+    def mock_list_blob_names(*args, **kwargs):
+        assert kwargs.get("name_starts_with") == filename.split(".pdf")[0]
+
+        class AsyncBlobItemsIterator:
+            def __init__(self, file):
+                self.files = [file]
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.files:
+                    return self.files.pop()
+                raise StopAsyncIteration
+
+        return AsyncBlobItemsIterator(filename)
+
+    monkeypatch.setattr("azure.storage.blob.aio.ContainerClient.list_blob_names", mock_list_blob_names)
+
+    async def mock_delete_blob(self, name, *args, **kwargs):
+        pytest.fail("Should not delete page blobs when not skipping the page check")
+
+    monkeypatch.setattr("azure.storage.blob.aio.ContainerClient.delete_blob", mock_delete_blob)
+
+    await blob_manager.remove_blob(f.content.name)
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(sys.version_info.minor < 10, reason="requires Python 3.10 or higher")
+async def test_remove_skip_page_check(monkeypatch, mock_env, blob_manager_skip_remove_page_check):
+    filename = "test-p25.pdf"
+    content = io.BytesIO(b"")
+    content.name = filename
+    f = File(content)
+
+    # Set up mocks used by upload_blob
+    async def mock_exists(*args, **kwargs):
+        return True
+
+    monkeypatch.setattr("azure.storage.blob.aio.ContainerClient.exists", mock_exists)
+
+    async def mock_upload_blob(self, name, *args, **kwargs):
+        assert name == filename
+        return azure.storage.blob.aio.BlobClient.from_blob_url(
+            f"https://test.blob.core.windows.net/test/{filename}.pdf", credential=MockAzureCredential()
+        )
+
+    monkeypatch.setattr("azure.storage.blob.aio.ContainerClient.upload_blob", mock_upload_blob)
+
+    await blob_manager_skip_remove_page_check.upload_blob(f)
+    assert f.url == f"https://test.blob.core.windows.net/test/{filename}.pdf"
+
+    # Set up mocks used by remove_blob
+    def mock_list_blob_names(*args, **kwargs):
+        assert kwargs.get("name_starts_with") == filename.split(".pdf")[0]
+
+        class AsyncBlobItemsIterator:
+            def __init__(self, file):
+                self.files = [file]
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.files:
+                    return self.files.pop()
+                raise StopAsyncIteration
+
+        return AsyncBlobItemsIterator(filename)
+
+    monkeypatch.setattr("azure.storage.blob.aio.ContainerClient.list_blob_names", mock_list_blob_names)
+
+    async def mock_delete_blob(self, name, *args, **kwargs):
+        assert name == filename
+        return True
+
+    monkeypatch.setattr("azure.storage.blob.aio.ContainerClient.delete_blob", mock_delete_blob)
+
+    await blob_manager_skip_remove_page_check.remove_blob(f.content.name)
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(sys.version_info.minor < 10, reason="requires Python 3.10 or higher")
