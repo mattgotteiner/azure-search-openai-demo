@@ -12,7 +12,44 @@ from msgraph.generated.applications.item.add_password.add_password_post_request_
 )
 from msgraph.generated.models.api_application import ApiApplication
 from msgraph.generated.models.application import Application
+from msgraph.generated.models.authentication_attribute_collection_input_configuration import (
+    AuthenticationAttributeCollectionInputConfiguration,
+)
+from msgraph.generated.models.authentication_attribute_collection_input_type import (
+    AuthenticationAttributeCollectionInputType,
+)
+from msgraph.generated.models.authentication_attribute_collection_page import (
+    AuthenticationAttributeCollectionPage,
+)
+from msgraph.generated.models.authentication_attribute_collection_page_view_configuration import (
+    AuthenticationAttributeCollectionPageViewConfiguration,
+)
+from msgraph.generated.models.built_in_identity_provider import BuiltInIdentityProvider
+from msgraph.generated.models.external_users_self_service_sign_up_events_flow import (
+    ExternalUsersSelfServiceSignUpEventsFlow,
+)
+from msgraph.generated.models.identity_built_in_user_flow_attribute import (
+    IdentityBuiltInUserFlowAttribute,
+)
+from msgraph.generated.models.identity_user_flow_attribute_data_type import (
+    IdentityUserFlowAttributeDataType,
+)
+from msgraph.generated.models.identity_user_flow_attribute_type import (
+    IdentityUserFlowAttributeType,
+)
 from msgraph.generated.models.implicit_grant_settings import ImplicitGrantSettings
+from msgraph.generated.models.on_attribute_collection_external_users_self_service_sign_up import (
+    OnAttributeCollectionExternalUsersSelfServiceSignUp,
+)
+from msgraph.generated.models.on_authentication_method_load_start_external_users_self_service_sign_up import (
+    OnAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp,
+)
+from msgraph.generated.models.on_interactive_auth_flow_start_external_users_self_service_sign_up import (
+    OnInteractiveAuthFlowStartExternalUsersSelfServiceSignUp,
+)
+from msgraph.generated.models.on_user_create_start_external_users_self_service_sign_up import (
+    OnUserCreateStartExternalUsersSelfServiceSignUp,
+)
 from msgraph.generated.models.password_credential import PasswordCredential
 from msgraph.generated.models.permission_scope import PermissionScope
 from msgraph.generated.models.required_resource_access import RequiredResourceAccess
@@ -162,6 +199,69 @@ def server_app_known_client_application(client_app_id: str) -> Application:
         api=ApiApplication(
             known_client_applications=[client_app_id],
         )
+    )
+
+
+def create_client_userflow_payload(identifier: int):
+    return ExternalUsersSelfServiceSignUpEventsFlow(
+        on_user_create_start=OnUserCreateStartExternalUsersSelfServiceSignUp(user_type_to_create="member"),
+        on_attribute_collection=OnAttributeCollectionExternalUsersSelfServiceSignUp(
+            attributes=[
+                IdentityBuiltInUserFlowAttribute(
+                    display_name="Email Address",
+                    data_type=IdentityUserFlowAttributeDataType.String,
+                    description="Email address of the user",
+                    id="email",
+                    user_flow_attribute_type=IdentityUserFlowAttributeType.BuiltIn,
+                ),
+                IdentityBuiltInUserFlowAttribute(
+                    display_name="Display Name",
+                    data_type=IdentityUserFlowAttributeDataType.String,
+                    description="Display Name of the User",
+                    id="displayName",
+                    user_flow_attribute_type=IdentityUserFlowAttributeType.BuiltIn,
+                ),
+            ],
+            attribute_collection_page=AuthenticationAttributeCollectionPage(
+                views=[
+                    AuthenticationAttributeCollectionPageViewConfiguration(
+                        inputs=[
+                            AuthenticationAttributeCollectionInputConfiguration(
+                                validation_reg_ex="^[a-zA-Z0-9.!#$%&amp;&#8217;'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:.[a-zA-Z0-9-]+)*$",  # noqa: E501
+                                attribute="email",
+                                required=True,
+                                label="Email Address",
+                                write_to_directory=True,
+                                input_type=AuthenticationAttributeCollectionInputType.Text,
+                                hidden=True,
+                                editable=False,
+                            ),
+                            AuthenticationAttributeCollectionInputConfiguration(
+                                validation_reg_ex="^.*",
+                                attribute="displayName",
+                                required=True,
+                                label="Display Name",
+                                write_to_directory=True,
+                                hidden=False,
+                                editable=True,
+                            ),
+                        ]
+                    )
+                ]
+            ),
+        ),
+        description=f"Azure Search OpenAI Chat Client App {identifier}",
+        on_interactive_auth_flow_start=OnInteractiveAuthFlowStartExternalUsersSelfServiceSignUp(
+            is_sign_up_allowed=True
+        ),
+        display_name=f"Azure Search OpenAI Chat Client App {identifier}",
+        on_authentication_method_load_start=OnAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp(
+            identity_providers=[
+                BuiltInIdentityProvider(
+                    display_name="Email One Time Passcode", identity_provider_type="EmailOTP", id="EmailOtpSignup-OAUTH"
+                )
+            ]
+        ),
     )
 
 
