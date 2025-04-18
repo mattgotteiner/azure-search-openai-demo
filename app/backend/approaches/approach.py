@@ -1,7 +1,7 @@
 import os
 from abc import ABC
 from collections.abc import AsyncGenerator, Awaitable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     Any,
     Callable,
@@ -88,17 +88,14 @@ class Document:
 
         return None
 
-
 @dataclass
 class ThoughtStep:
     title: str
     description: Optional[Any]
     props: Optional[dict[str, Any]] = None
-
     def update_token_usage(self, usage: CompletionUsage) -> None:
         if self.props:
             self.props["token_usage"] = TokenUsageProps.from_completion_usage(usage)
-
 
 @dataclass
 class DataPoints:
@@ -108,10 +105,9 @@ class DataPoints:
 
 @dataclass
 class ExtraInfo:
-    data_points: DataPoints
-    thoughts: Optional[list[ThoughtStep]] = None
+    data_points: DataPoints = None
+    thoughts: list[ThoughtStep] = field(default_factory=list)
     followup_questions: Optional[list[Any]] = None
-
 
 @dataclass
 class TokenUsageProps:
@@ -402,7 +398,7 @@ class Approach(ABC):
         model: str,
         deployment: Optional[str],
         usage: Optional[CompletionUsage] = None,
-        reasoning_effort: Optional[ChatCompletionReasoningEffort] = None,
+        reasoning_effort: Optional[ChatCompletionReasoningEffort] = None
     ) -> ThoughtStep:
         properties: dict[str, Any] = {"model": model}
         if deployment:
@@ -421,7 +417,7 @@ class Approach(ABC):
         messages: list[ChatCompletionMessageParam],
         session_state: Any = None,
         context: dict[str, Any] = {},
-    ) -> dict[str, Any]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         raise NotImplementedError
 
     async def run_stream(

@@ -133,15 +133,12 @@ const Chat = () => {
         let answer: string = "";
         let askResponse: ChatAppResponse = {} as ChatAppResponse;
 
-        const updateState = (newContent: string) => {
+        const updateState = (newContent: string, role: string) => {
             return new Promise(resolve => {
                 setTimeout(() => {
                     answer += newContent;
-                    const latestResponse: ChatAppResponse = {
-                        ...askResponse,
-                        message: { content: answer, role: askResponse.message.role }
-                    };
-                    setStreamedAnswers([...answers, [question, latestResponse]]);
+                    askResponse.message = { content: answer, role: role };
+                    setStreamedAnswers([...answers, [question, { ...askResponse }]]);
                     resolve(null);
                 }, 33);
             });
@@ -149,12 +146,9 @@ const Chat = () => {
         try {
             setIsStreaming(true);
             for await (const event of readNDJSONStream(responseBody)) {
-                if (event["context"] && event["context"]["data_points"]) {
-                    event["message"] = event["delta"];
-                    askResponse = event as ChatAppResponse;
-                } else if (event["delta"] && event["delta"]["content"]) {
+                if (event["delta"] && event["delta"]["content"]) {
                     setIsLoading(false);
-                    await updateState(event["delta"]["content"]);
+                    await updateState(event["delta"]["content"], event["delta"]["role"]);
                 } else if (event["context"]) {
                     // Update context with new keys from latest event
                     askResponse.context = { ...askResponse.context, ...event["context"] };
@@ -165,11 +159,7 @@ const Chat = () => {
         } finally {
             setIsStreaming(false);
         }
-        const fullResponse: ChatAppResponse = {
-            ...askResponse,
-            message: { content: answer, role: askResponse.message.role }
-        };
-        return fullResponse;
+        return askResponse;
     };
 
     const client = useLogin ? useMsal().instance : undefined;
