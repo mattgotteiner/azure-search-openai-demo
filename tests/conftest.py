@@ -34,7 +34,7 @@ import core
 from approaches.chatreadretrieveread import ChatReadRetrieveReadApproach
 from approaches.promptmanager import PromptyManager
 from core.authentication import AuthenticationHelper
-from prepdocslib.blobmanager import AdlsBlobManager, BlobManager
+from prepdocslib.blobmanager import BlobManager, UserBlobManager
 
 from .mocks import (
     MOCK_EMBEDDING_DIMENSIONS,
@@ -1143,7 +1143,7 @@ def chat_approach():
         query_language="en-us",
         query_speller="lexicon",
         prompt_manager=PromptyManager(),
-        user_blob_manager=AdlsBlobManager(
+        user_blob_manager=UserBlobManager(
             endpoint="https://test-userstorage-account.dfs.core.windows.net",
             container="test-userstorage-container",
             credential=MockAzureCredential(),

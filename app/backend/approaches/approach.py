@@ -45,7 +45,7 @@ from openai.types.chat import (
 )
 
 from approaches.promptmanager import PromptManager
-from prepdocslib.blobmanager import AdlsBlobManager, BlobManager
+from prepdocslib.blobmanager import UserBlobManager, BlobManager
 from prepdocslib.embeddings import ImageEmbeddings
 
 
@@ -257,7 +257,7 @@ class Approach(ABC):
         multimodal_enabled: bool = False,
         image_embeddings_client: Optional[ImageEmbeddings] = None,
         global_blob_manager: Optional[BlobManager] = None,
-        user_blob_manager: Optional[AdlsBlobManager] = None,
+        user_blob_manager: Optional[UserBlobManager] = None,
     ):
         self.search_client = search_client
         self.openai_client = openai_client
@@ -862,8 +862,14 @@ class Approach(ABC):
             blob_path = blob_url
 
         # Download the blob using the appropriate client
+        # Check if URL belongs to user storage (ADLS Gen2 with DFS endpoint) by matching the endpoint hostname
         result = None
-        if ".dfs.core.windows.net" in blob_url and self.user_blob_manager:
+        is_user_storage_url = (
+            self.user_blob_manager
+            and blob_url.startswith("http")
+            and self.user_blob_manager.endpoint in blob_url
+        )
+        if is_user_storage_url and self.user_blob_manager:
             result = await self.user_blob_manager.download_blob(blob_path, user_oid=user_oid)
         elif self.global_blob_manager:
             result = await self.global_blob_manager.download_blob(blob_path)

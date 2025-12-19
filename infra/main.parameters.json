@@ -358,6 +358,15 @@
     },
     "useSharePointSource": {
       "value": "${USE_SHAREPOINT_SOURCE=false}"
+    },
+    "useAdlsGen2": {
+      "value": "${USE_ADLS_GEN2=false}"
+    },
+    "adlsGen2StorageAccountName": {
+      "value": "${AZURE_ADLS_GEN2_STORAGE_ACCOUNT}"
+    },
+    "adlsGen2ContainerName": {
+      "value": "${AZURE_ADLS_GEN2_STORAGE_CONTAINER=content}"
     }
   }
 }

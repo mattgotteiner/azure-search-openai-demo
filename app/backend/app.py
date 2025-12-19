@@ -102,7 +102,7 @@ from prepdocs import (
     setup_openai_client,
     setup_search_info,
 )
-from prepdocslib.blobmanager import AdlsBlobManager, BlobManager
+from prepdocslib.blobmanager import UserBlobManager, BlobManager
 from prepdocslib.embeddings import ImageEmbeddings
 from prepdocslib.filestrategy import UploadUserFileStrategy
 from prepdocslib.listfilestrategy import File
@@ -160,7 +160,7 @@ async def content_file(path: str, auth_claims: dict[str, Any]):
         current_app.logger.info("Path not found in general Blob container: %s", path)
         if current_app.config[CONFIG_USER_UPLOAD_ENABLED]:
             user_oid = auth_claims["oid"]
-            user_blob_manager: AdlsBlobManager = current_app.config[CONFIG_USER_BLOB_MANAGER]
+            user_blob_manager: UserBlobManager = current_app.config[CONFIG_USER_BLOB_MANAGER]
             result = await user_blob_manager.download_blob(path, user_oid=user_oid)
             if result is None:
                 current_app.logger.exception("Path not found in DataLake: %s", path)
@@ -375,7 +375,7 @@ async def upload(auth_claims: dict[str, Any]):
     try:
         user_oid = auth_claims["oid"]
         file = request_files.getlist("file")[0]
-        adls_manager: AdlsBlobManager = current_app.config[CONFIG_USER_BLOB_MANAGER]
+        adls_manager: UserBlobManager = current_app.config[CONFIG_USER_BLOB_MANAGER]
         file_url = await adls_manager.upload_blob(file, file.filename, user_oid)
         ingester: UploadUserFileStrategy = current_app.config[CONFIG_INGESTER]
         await ingester.add_file(File(content=file, url=file_url, acls={"oids": [user_oid]}), user_oid=user_oid)
@@ -391,7 +391,7 @@ async def delete_uploaded(auth_claims: dict[str, Any]):
     request_json = await request.get_json()
     filename = request_json.get("filename")
     user_oid = auth_claims["oid"]
-    adls_manager: AdlsBlobManager = current_app.config[CONFIG_USER_BLOB_MANAGER]
+    adls_manager: UserBlobManager = current_app.config[CONFIG_USER_BLOB_MANAGER]
     await adls_manager.remove_blob(filename, user_oid)
     ingester: UploadUserFileStrategy = current_app.config[CONFIG_INGESTER]
     await ingester.remove_file(filename, user_oid)
@@ -405,7 +405,7 @@ async def list_uploaded(auth_claims: dict[str, Any]):
     Only returns files directly in the user's directory, not in subdirectories.
     Excludes image files and the images directory."""
     user_oid = auth_claims["oid"]
-    adls_manager: AdlsBlobManager = current_app.config[CONFIG_USER_BLOB_MANAGER]
+    adls_manager: UserBlobManager = current_app.config[CONFIG_USER_BLOB_MANAGER]
     files = await adls_manager.list_blobs(user_oid)
     return jsonify(files), 200
 
@@ -418,6 +418,9 @@ async def setup_clients():
     AZURE_IMAGESTORAGE_CONTAINER = os.environ.get("AZURE_IMAGESTORAGE_CONTAINER")
     AZURE_USERSTORAGE_ACCOUNT = os.environ.get("AZURE_USERSTORAGE_ACCOUNT")
     AZURE_USERSTORAGE_CONTAINER = os.environ.get("AZURE_USERSTORAGE_CONTAINER")
+    USE_ADLS_GEN2 = os.getenv("USE_ADLS_GEN2", "").lower() == "true"
+    AZURE_ADLS_GEN2_STORAGE_ACCOUNT = os.getenv("AZURE_ADLS_GEN2_STORAGE_ACCOUNT")
+    AZURE_ADLS_GEN2_STORAGE_CONTAINER = os.getenv("AZURE_ADLS_GEN2_STORAGE_CONTAINER")
     AZURE_SEARCH_SERVICE = os.environ["AZURE_SEARCH_SERVICE"]
     AZURE_SEARCH_ENDPOINT = f"https://{AZURE_SEARCH_SERVICE}.search.windows.net"
     AZURE_SEARCH_INDEX = os.environ["AZURE_SEARCH_INDEX"]
@@ -558,11 +561,22 @@ async def setup_clients():
             )
 
     # Set up the global blob storage manager (used for global content/images, but not user uploads)
+    # Use ADLS Gen2 storage when enabled, otherwise use regular storage
+    # Image container always uses regular storage account
+    if USE_ADLS_GEN2 and AZURE_ADLS_GEN2_STORAGE_ACCOUNT and AZURE_ADLS_GEN2_STORAGE_CONTAINER:
+        global_storage_account = AZURE_ADLS_GEN2_STORAGE_ACCOUNT
+        global_storage_container = AZURE_ADLS_GEN2_STORAGE_CONTAINER
+        image_endpoint = f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net"
+    else:
+        global_storage_account = AZURE_STORAGE_ACCOUNT
+        global_storage_container = AZURE_STORAGE_CONTAINER
+        image_endpoint = None  # Use the same endpoint as content
     global_blob_manager = BlobManager(
-        endpoint=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
+        endpoint=f"https://{global_storage_account}.blob.core.windows.net",
         credential=azure_credential,
-        container=AZURE_STORAGE_CONTAINER,
+        container=global_storage_container,
         image_container=AZURE_IMAGESTORAGE_CONTAINER,
+        image_endpoint=image_endpoint,
     )
     current_app.config[CONFIG_GLOBAL_BLOB_MANAGER] = global_blob_manager
 
@@ -618,7 +632,7 @@ async def setup_clients():
             )
         if not AZURE_ENFORCE_ACCESS_CONTROL:
             raise ValueError("AZURE_ENFORCE_ACCESS_CONTROL must be true when USE_USER_UPLOAD is true")
-        user_blob_manager = AdlsBlobManager(
+        user_blob_manager = UserBlobManager(
             endpoint=f"https://{AZURE_USERSTORAGE_ACCOUNT}.dfs.core.windows.net",
             container=AZURE_USERSTORAGE_CONTAINER,
             credential=azure_credential,

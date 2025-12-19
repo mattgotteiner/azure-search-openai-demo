@@ -28,8 +28,46 @@ class BlobProperties(TypedDict, total=False):
 
 class BaseBlobManager:
     """
-    Base class for Azure Storage operations, providing common file naming and path utilities
+    Base class for Azure Storage operations, providing common file naming and path utilities.
+    Optionally supports ADLS Gen2 operations when use_adls_gen2 is True.
     """
+
+    def __init__(
+        self,
+        endpoint: Optional[str] = None,
+        container: Optional[str] = None,
+        credential: Optional[AsyncTokenCredential] = None,
+        use_adls_gen2: bool = False,
+        enable_global_documents: bool = False,
+    ):
+        """
+        Initializes the BaseBlobManager.
+
+        Args:
+            endpoint: The storage endpoint URL
+            container: The name of the container (file system for ADLS Gen2)
+            credential: The credential for accessing storage
+            use_adls_gen2: Whether to use ADLS Gen2 clients
+            enable_global_documents: If True, documents without ACLs are treated as globally accessible
+        """
+        self.endpoint = endpoint
+        self.container = container
+        self.credential = credential
+        self.use_adls_gen2 = use_adls_gen2
+        self.enable_global_documents = enable_global_documents
+        self.file_system_client: Optional[FileSystemClient] = None
+
+        if use_adls_gen2 and endpoint and container and credential:
+            self.file_system_client = FileSystemClient(
+                account_url=endpoint,
+                file_system_name=container,
+                credential=credential,
+            )
+
+    async def close_clients(self):
+        """Close any open clients."""
+        if self.file_system_client:
+            await self.file_system_client.close()
 
     @classmethod
     def sourcepage_from_file_page(cls, filename, page=0) -> str:
@@ -100,6 +138,60 @@ class BaseBlobManager:
     ) -> Optional[str]:
         raise NotImplementedError("Subclasses must implement this method")
 
+    async def get_acl_metadata(self, blob_path: str) -> dict[str, list[str]]:
+        """
+        Retrieves the ACL metadata for a blob using ADLS Gen2.
+
+        Args:
+            blob_path: The path to the blob in the storage
+
+        Returns:
+            dict[str, list[str]]: A dictionary containing 'oids' and 'groups' lists.
+                If enable_global_documents is True and no ACLs are found,
+                returns {"oids": ["all"], "groups": ["all"]}.
+
+        Raises:
+            ValueError: If ADLS Gen2 is not enabled or file_system_client is not initialized
+            ResourceNotFoundError: If the blob does not exist
+        """
+        if not self.use_adls_gen2 or self.file_system_client is None:
+            raise ValueError("ADLS Gen2 must be enabled to retrieve ACL metadata. Initialize with use_adls_gen2=True.")
+
+        acls: dict[str, list[str]] = {"oids": [], "groups": []}
+
+        file_client = self.file_system_client.get_file_client(blob_path)
+        try:
+            # Request ACLs as GUIDs (upn=False)
+            # https://learn.microsoft.com/python/api/azure-storage-file-datalake/azure.storage.filedatalake.datalakefileclient?view=azure-python#azure-storage-filedatalake-datalakefileclient-get-access-control
+            access_control = await file_client.get_access_control(upn=False)
+            acl_list_str = access_control.get("acl", "")
+
+            # ACL Format: user::rwx,group::r-x,other::r--,user:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:r--
+            # https://learn.microsoft.com/azure/storage/blobs/data-lake-storage-access-control
+            acl_entries = acl_list_str.split(",")
+            for acl_entry in acl_entries:
+                acl_parts = acl_entry.split(":")
+                if len(acl_parts) != 3:
+                    continue
+                # Skip entries without a specific ID (e.g., user::rwx, group::r-x)
+                if len(acl_parts[1]) == 0:
+                    continue
+                # Check if the entry has read permission
+                if acl_parts[0] == "user" and "r" in acl_parts[2]:
+                    acls["oids"].append(acl_parts[1])
+                if acl_parts[0] == "group" and "r" in acl_parts[2]:
+                    acls["groups"].append(acl_parts[1])
+
+            # If global documents are enabled and no specific ACLs found, mark as globally accessible
+            if self.enable_global_documents and len(acls["oids"]) == 0 and len(acls["groups"]) == 0:
+                acls = {"oids": ["all"], "groups": ["all"]}
+
+        except ResourceNotFoundError:
+            logger.warning("Blob not found when retrieving ACLs: %s", blob_path)
+            raise
+
+        return acls
+
     async def download_blob(
         self, blob_path: str, user_oid: Optional[str] = None
     ) -> Optional[tuple[bytes, BlobProperties]]:
@@ -119,33 +211,37 @@ class BaseBlobManager:
         raise NotImplementedError("Subclasses must implement this method")
 
 
-class AdlsBlobManager(BaseBlobManager):
+class UserBlobManager(BaseBlobManager):
     """
-    Manager for Azure Data Lake Storage blob operations, particularly for user-specific file operations.
+    Manager for user-specific file operations.
     Documents are stored directly in the user's directory for backwards compatibility.
     Images are stored in a separate images subdirectory for better organization.
     """
 
-    def __init__(self, endpoint: str, container: str, credential: AsyncTokenCredential):
+    def __init__(
+        self,
+        endpoint: str,
+        container: str,
+        credential: AsyncTokenCredential,
+        enable_global_documents: bool = False,
+    ):
         """
-        Initializes the AdlsBlobManager with the necessary parameters.
+        Initializes the UserBlobManager with the necessary parameters.
 
         Args:
             endpoint: The ADLS endpoint URL
             container: The name of the container (file system)
             credential: The credential for accessing ADLS
+            enable_global_documents: If True, documents without ACLs are treated as globally accessible
         """
-        self.endpoint = endpoint
-        self.container = container
-        self.credential = credential
-        self.file_system_client = FileSystemClient(
-            account_url=self.endpoint,
-            file_system_name=self.container,
-            credential=self.credential,
+        # Initialize base class with ADLS Gen2 enabled
+        super().__init__(
+            endpoint=endpoint,
+            container=container,
+            credential=credential,
+            use_adls_gen2=True,
+            enable_global_documents=enable_global_documents,
         )
-
-    async def close_clients(self):
-        await self.file_system_client.close()
 
     async def _ensure_directory(self, directory_path: str, user_oid: str) -> DataLakeDirectoryClient:
         """
@@ -270,7 +366,7 @@ class AdlsBlobManager(BaseBlobManager):
                 - None if blob not found or access denied
         """
         if user_oid is None:
-            logger.warning("user_oid must be provided for Data Lake Storage operations.")
+            logger.warning("user_oid must be provided for user-specific file operations.")
             return None
 
         # Get the directory path and file name from the blob path
@@ -395,6 +491,7 @@ class BlobManager(BaseBlobManager):
         container: str,
         credential: AsyncTokenCredential | str,
         image_container: Optional[str] = None,
+        image_endpoint: Optional[str] = None,
         account: Optional[str] = None,
         resource_group: Optional[str] = None,
         subscription_id: Optional[str] = None,
@@ -406,12 +503,22 @@ class BlobManager(BaseBlobManager):
         self.resource_group = resource_group
         self.subscription_id = subscription_id
         self.image_container = image_container
+        self.image_endpoint = image_endpoint or endpoint
         self.blob_service_client = BlobServiceClient(
             account_url=self.endpoint, credential=self.credential, max_single_put_size=4 * 1024 * 1024
         )
+        # Create a separate client for images if using a different endpoint
+        if self.image_endpoint != self.endpoint:
+            self.image_blob_service_client = BlobServiceClient(
+                account_url=self.image_endpoint, credential=self.credential, max_single_put_size=4 * 1024 * 1024
+            )
+        else:
+            self.image_blob_service_client = self.blob_service_client
 
     async def close_clients(self):
         await self.blob_service_client.close()
+        if self.image_blob_service_client != self.blob_service_client:
+            await self.image_blob_service_client.close()
 
     def get_managedidentity_connectionstring(self):
         if not self.account or not self.resource_group or not self.subscription_id:
@@ -450,9 +557,9 @@ class BlobManager(BaseBlobManager):
             )
         if user_oid is not None:
             raise ValueError(
-                "user_oid is not supported for BlobManager. Use AdlsBlobManager for user-specific operations."
+                "user_oid is not supported for BlobManager. Use UserBlobManager for user-specific operations."
             )
-        container_client = self.blob_service_client.get_container_client(self.image_container)
+        container_client = self.image_blob_service_client.get_container_client(self.image_container)
         if not await container_client.exists():
             await container_client.create_container()
         image_bytes = self.add_image_citation(image_bytes, document_filename, image_filename, image_page_num)
@@ -481,7 +588,7 @@ class BlobManager(BaseBlobManager):
         """
         if user_oid is not None:
             raise ValueError(
-                "user_oid is not supported for BlobManager. Use AdlsBlobManager for user-specific operations."
+                "user_oid is not supported for BlobManager. Use UserBlobManager for user-specific operations."
             )
         container_client = self.blob_service_client.get_container_client(self.container)
         if not await container_client.exists():

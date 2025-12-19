@@ -66,11 +66,22 @@ def configure_global_settings():
         process_figures=use_multimodal,
     )
 
+    # Storage configuration - use ADLS Gen2 variables when enabled, otherwise use regular storage
+    use_adls_gen2 = os.getenv("USE_ADLS_GEN2", "").lower() == "true"
+    if use_adls_gen2:
+        storage_account = os.environ["AZURE_ADLS_GEN2_STORAGE_ACCOUNT"]
+        storage_container = os.environ["AZURE_ADLS_GEN2_STORAGE_CONTAINER"]
+        storage_resource_group = os.environ["AZURE_ADLS_GEN2_STORAGE_RESOURCE_GROUP"]
+    else:
+        storage_account = os.environ["AZURE_STORAGE_ACCOUNT"]
+        storage_container = os.environ["AZURE_STORAGE_CONTAINER"]
+        storage_resource_group = os.environ["AZURE_STORAGE_RESOURCE_GROUP"]
+
     blob_manager = setup_blob_manager(
         azure_credential=azure_credential,
-        storage_account=os.environ["AZURE_STORAGE_ACCOUNT"],
-        storage_container=os.environ["AZURE_STORAGE_CONTAINER"],
-        storage_resource_group=os.environ["AZURE_STORAGE_RESOURCE_GROUP"],
+        storage_account=storage_account,
+        storage_container=storage_container,
+        storage_resource_group=storage_resource_group,
         subscription_id=os.environ["AZURE_SUBSCRIPTION_ID"],
     )
 

@@ -8,6 +8,7 @@ from azure.search.documents.indexes._generated.models import (
     NativeBlobSoftDeleteDeletionDetectionPolicy,
 )
 from azure.search.documents.indexes.models import (
+    IndexerPermissionOption,
     IndexingParameters,
     IndexingParametersConfiguration,
     IndexProjectionMode,
@@ -69,6 +70,7 @@ class CloudIngestionStrategy(Strategy):  # pragma: no cover
         document_action: DocumentAction = DocumentAction.Add,
         search_analyzer_name: str | None = None,
         use_acls: bool = False,
+        use_adls_gen2: bool = False,
         use_multimodal: bool = False,
         enforce_access_control: bool = False,
         use_web_source: bool = False,
@@ -82,6 +84,7 @@ class CloudIngestionStrategy(Strategy):  # pragma: no cover
         self.search_info = search_info
         self.search_analyzer_name = search_analyzer_name
         self.use_acls = use_acls
+        self.use_adls_gen2 = use_adls_gen2
         self.use_multimodal = use_multimodal
         self.enforce_access_control = enforce_access_control
         self.use_web_source = use_web_source
@@ -131,6 +134,9 @@ class CloudIngestionStrategy(Strategy):  # pragma: no cover
         ]
         if self.use_multimodal:
             mappings.append(InputFieldMappingEntry(name="images", source="/document/chunks/*/images"))
+        if self.use_adls_gen2 and self.use_acls:
+            mappings.append(InputFieldMappingEntry(name="oids", source="/document/metadata_user_ids"))
+            mappings.append(InputFieldMappingEntry(name="groups", source="/document/metadata_group_ids"))
 
         index_projection = SearchIndexerIndexProjection(
             selectors=[
@@ -286,14 +292,29 @@ class CloudIngestionStrategy(Strategy):  # pragma: no cover
 
         await self._search_manager.create_index()
 
-        async with self.search_info.create_search_indexer_client() as indexer_client:
+        data_source_connection_string = self.blob_manager.get_managedidentity_connectionstring()
+        data_source_container = SearchIndexerDataContainer(name=self.blob_manager.container)
+        data_deletion_detection_policy = NativeBlobSoftDeleteDeletionDetectionPolicy()
+
+        data_source_connection: SearchIndexerDataSourceConnection
+        if self.use_adls_gen2:
+            data_source_connection = SearchIndexerDataSourceConnection(
+                name=self.data_source_name,
+                type=SearchIndexerDataSourceType.ADLS_GEN2,
+                connection_string=data_source_connection_string,
+                container=data_source_container,
+                indexer_permission_options=[IndexerPermissionOption.GROUP_IDS, IndexerPermissionOption.USER_IDS] if self.use_acls else [],
+            )
+        else:
             data_source_connection = SearchIndexerDataSourceConnection(
                 name=self.data_source_name,
                 type=SearchIndexerDataSourceType.AZURE_BLOB,
-                connection_string=self.blob_manager.get_managedidentity_connectionstring(),
-                container=SearchIndexerDataContainer(name=self.blob_manager.container),
-                data_deletion_detection_policy=NativeBlobSoftDeleteDeletionDetectionPolicy(),
+                connection_string=data_source_connection_string,
+                container=data_source_container,
+                data_deletion_detection_policy=data_deletion_detection_policy
             )
+
+        async with self.search_info.create_search_indexer_client() as indexer_client:
             await indexer_client.create_or_update_data_source_connection(data_source_connection)
 
             skillset = self._build_skillset()

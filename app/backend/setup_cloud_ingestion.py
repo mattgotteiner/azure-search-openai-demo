@@ -36,9 +36,6 @@ async def setup_cloud_ingestion_strategy(
     search_service = os.environ["AZURE_SEARCH_SERVICE"]
     index_name = os.environ["AZURE_SEARCH_INDEX"]
     search_user_assigned_identity_resource_id = os.environ["AZURE_SEARCH_USER_ASSIGNED_IDENTITY_RESOURCE_ID"]
-    storage_account = os.environ["AZURE_STORAGE_ACCOUNT"]
-    storage_container = os.environ["AZURE_STORAGE_CONTAINER"]
-    storage_resource_group = os.environ["AZURE_STORAGE_RESOURCE_GROUP"]
     subscription_id = os.environ["AZURE_SUBSCRIPTION_ID"]
     image_storage_container = os.environ.get("AZURE_IMAGESTORAGE_CONTAINER")
     search_embedding_field = os.environ["AZURE_SEARCH_FIELD_NAME_EMBEDDING"]
@@ -52,6 +49,17 @@ async def setup_cloud_ingestion_strategy(
     text_processor_resource_id = os.environ["TEXT_PROCESSOR_SKILL_AUTH_RESOURCE_ID"]
 
     # Feature flags
+    use_adls_gen2 = os.getenv("USE_ADLS_GEN2", "").lower() == "true"
+
+    # Storage configuration - use ADLS Gen2 variables when enabled, otherwise use regular storage
+    if use_adls_gen2:
+        storage_account = os.environ["AZURE_ADLS_GEN2_STORAGE_ACCOUNT"]
+        storage_container = os.environ["AZURE_ADLS_GEN2_STORAGE_CONTAINER"]
+        storage_resource_group = os.environ["AZURE_ADLS_GEN2_STORAGE_RESOURCE_GROUP"]
+    else:
+        storage_account = os.environ["AZURE_STORAGE_ACCOUNT"]
+        storage_container = os.environ["AZURE_STORAGE_CONTAINER"]
+        storage_resource_group = os.environ["AZURE_STORAGE_RESOURCE_GROUP"]
     use_multimodal = os.getenv("USE_MULTIMODAL", "").lower() == "true"
     use_acls = os.getenv("AZURE_USE_AUTHENTICATION", "").lower() == "true"
     enforce_access_control = os.getenv("AZURE_ENFORCE_ACCESS_CONTROL", "").lower() == "true"
@@ -122,6 +130,7 @@ async def setup_cloud_ingestion_strategy(
         document_action=document_action,
         search_analyzer_name=os.getenv("AZURE_SEARCH_ANALYZER_NAME"),
         use_acls=use_acls,
+        use_adls_gen2=use_adls_gen2,
         use_multimodal=use_multimodal,
         enforce_access_control=enforce_access_control,
         use_web_source=use_web_source,

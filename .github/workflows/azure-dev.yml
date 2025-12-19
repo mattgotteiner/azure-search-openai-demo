@@ -118,6 +118,7 @@ jobs:
       USE_AGENTIC_KNOWLEDGEBASE: ${{ vars.USE_AGENTIC_KNOWLEDGEBASE }}
       USE_WEB_SOURCE: ${{ vars.USE_WEB_SOURCE }}
       USE_SHAREPOINT_SOURCE: ${{ vars.USE_SHAREPOINT_SOURCE }}
+      USE_ADLS_GEN2: ${{ vars.USE_ADLS_GEN2 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

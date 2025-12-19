@@ -107,6 +107,9 @@ param useAgenticKnowledgeBase bool // Set in main.parameters.json
 param userStorageAccountName string = ''
 param userStorageContainerName string = 'user-content'
 
+param adlsGen2StorageAccountName string = ''
+param adlsGen2ContainerName string = 'content'
+
 param tokenStorageContainerName string = 'tokens'
 
 param imageStorageContainerName string = 'images'
@@ -366,6 +369,8 @@ param ragSendImageSources bool = true
 param useWebSource bool = false
 @description('Whether to enable SharePoint sources for agentic retrieval')
 param useSharePointSource bool = false
+@description('Whether to use ADLS Gen2 for storage')
+param useAdlsGen2 bool = false
 
 param acaIdentityName string = deploymentTarget == 'containerapps' ? '${environmentName}-aca-identity' : ''
 param acaManagedEnvironmentName string = deploymentTarget == 'containerapps' ? '${environmentName}-aca-env' : ''
@@ -547,6 +552,9 @@ var appEnvVariables = {
   RAG_SEND_IMAGE_SOURCES: ragSendImageSources
   USE_WEB_SOURCE: useWebSource
   USE_SHAREPOINT_SOURCE: useSharePointSource
+  USE_ADLS_GEN2: useAdlsGen2
+  AZURE_ADLS_GEN2_STORAGE_ACCOUNT: useAdlsGen2 ? adlsGen2Storage!.outputs.name : ''
+  AZURE_ADLS_GEN2_STORAGE_CONTAINER: useAdlsGen2 ? adlsGen2ContainerName : ''
 }
 
 // App Service for the web application (Python Quart app with JS frontend)
@@ -944,6 +952,32 @@ module userStorage 'core/storage/storage-account.bicep' = if (useUserUpload) {
   }
 }
 
+module adlsGen2Storage 'core/storage/storage-account.bicep' = if (useAdlsGen2) {
+  name: 'adls-gen2-storage'
+  scope: storageResourceGroup
+  params: {
+    name: !empty(adlsGen2StorageAccountName)
+      ? adlsGen2StorageAccountName
+      : 'adls${abbrs.storageStorageAccounts}${resourceToken}'
+    location: storageResourceGroupLocation
+    tags: tags
+    publicNetworkAccess: publicNetworkAccess
+    bypass: bypass
+    allowBlobPublicAccess: false
+    allowSharedKeyAccess: false
+    isHnsEnabled: true
+    sku: {
+      name: storageSkuName
+    }
+    containers: [
+      {
+        name: adlsGen2ContainerName
+        publicAccess: 'None'
+      }
+    ]
+  }
+}
+
 module cosmosDb 'br/public:avm/res/document-db/database-account:0.6.1' = if (useAuthentication && useChatHistoryCosmos) {
   name: 'cosmosdb'
   scope: cosmosDbResourceGroup
@@ -1086,6 +1120,16 @@ module storageOwnerRoleUser 'core/security/role.bicep' = if (useUserUpload) {
   }
 }
 
+module adlsGen2StorageContribRoleUser 'core/security/role.bicep' = if (useAdlsGen2) {
+  scope: storageResourceGroup
+  name: 'adls-gen2-storage-contrib-role-user'
+  params: {
+    principalId: principalId
+    roleDefinitionId: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor
+    principalType: principalType
+  }
+}
+
 module searchRoleUser 'core/security/role.bicep' = {
   scope: searchServiceResourceGroup
   name: 'search-role-user'
@@ -1198,10 +1242,44 @@ module storageOwnerRoleBackend 'core/security/role.bicep' = if (useUserUpload) {
   }
 }
 
+module adlsGen2StorageRoleBackend 'core/security/role.bicep' = if (useAdlsGen2) {
+  scope: storageResourceGroup
+  name: 'adls-gen2-storage-role-backend'
+  params: {
+    principalId: (deploymentTarget == 'appservice')
+      ? backend!.outputs.identityPrincipalId
+      : acaBackend!.outputs.identityPrincipalId
+    roleDefinitionId: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1' // Storage Blob Data Reader
+    principalType: 'ServicePrincipal'
+  }
+}
+
+module adlsGen2StorageContribRoleBackend 'core/security/role.bicep' = if (useAdlsGen2) {
+  scope: storageResourceGroup
+  name: 'adls-gen2-storage-contrib-role-backend'
+  params: {
+    principalId: (deploymentTarget == 'appservice')
+      ? backend!.outputs.identityPrincipalId
+      : acaBackend!.outputs.identityPrincipalId
+    roleDefinitionId: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // Search service needs blob read access for both integrated vectorization and cloud ingestion indexer data source
 module storageRoleSearchService 'core/security/role.bicep' = if (useIntegratedVectorization || useCloudIngestion) {
   scope: storageResourceGroup
   name: 'storage-role-searchservice'
+  params: {
+    principalId: searchService.outputs.systemAssignedPrincipalId
+    roleDefinitionId: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1' // Storage Blob Data Reader
+    principalType: 'ServicePrincipal'
+  }
+}
+
+module adlsGen2StorageRoleSearchService 'core/security/role.bicep' = if (useAdlsGen2 && (useIntegratedVectorization || useCloudIngestion)) {
+  scope: storageResourceGroup
+  name: 'adls-gen2-storage-role-searchservice'
   params: {
     principalId: searchService.outputs.systemAssignedPrincipalId
     roleDefinitionId: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1' // Storage Blob Data Reader
@@ -1339,7 +1417,7 @@ var otherPrivateEndpointConnections = (usePrivateEndpoint)
       {
         groupId: 'blob'
         dnsZoneName: 'privatelink.blob.${environmentData.suffixes.storage}'
-        resourceIds: concat([storage.outputs.id], useUserUpload ? [userStorage!.outputs.id] : [])
+        resourceIds: concat([storage.outputs.id], useUserUpload ? [userStorage!.outputs.id] : [], useAdlsGen2 ? [adlsGen2Storage!.outputs.id] : [])
       }
       {
         groupId: 'searchService'
@@ -1484,6 +1562,10 @@ output AZURE_USERSTORAGE_CONTAINER string = userStorageContainerName
 output AZURE_USERSTORAGE_RESOURCE_GROUP string = storageResourceGroup.name
 
 output AZURE_IMAGESTORAGE_CONTAINER string = useMultimodal ? imageStorageContainerName : ''
+
+output AZURE_ADLS_GEN2_STORAGE_ACCOUNT string = useAdlsGen2 ? adlsGen2Storage!.outputs.name : ''
+output AZURE_ADLS_GEN2_STORAGE_CONTAINER string = useAdlsGen2 ? adlsGen2ContainerName : ''
+output AZURE_ADLS_GEN2_STORAGE_RESOURCE_GROUP string = useAdlsGen2 ? storageResourceGroup.name : ''
 
 // Cloud ingestion function skill endpoints & resource IDs
 output DOCUMENT_EXTRACTOR_SKILL_ENDPOINT string = useCloudIngestion ? 'https://${functions!.outputs.documentExtractorUrl}/api/extract' : ''

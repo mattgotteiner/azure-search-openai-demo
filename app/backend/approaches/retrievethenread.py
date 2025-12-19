@@ -13,7 +13,7 @@ from approaches.approach import (
     ThoughtStep,
 )
 from approaches.promptmanager import PromptManager
-from prepdocslib.blobmanager import AdlsBlobManager, BlobManager
+from prepdocslib.blobmanager import UserBlobManager, BlobManager
 from prepdocslib.embeddings import ImageEmbeddings
 
 
@@ -51,7 +51,7 @@ class RetrieveThenReadApproach(Approach):
         multimodal_enabled: bool = False,
         image_embeddings_client: Optional[ImageEmbeddings] = None,
         global_blob_manager: Optional[BlobManager] = None,
-        user_blob_manager: Optional[AdlsBlobManager] = None,
+        user_blob_manager: Optional[UserBlobManager] = None,
         use_web_source: bool = False,
         use_sharepoint_source: bool = False,
         retrieval_reasoning_effort: Optional[str] = None,

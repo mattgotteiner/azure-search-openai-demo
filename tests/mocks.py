@@ -650,7 +650,7 @@ class MockSynthesisResult:
         return self.__result
 
 
-# Mock DirectoryClient used in blobmanager.py:AdlsBlobManager
+# Mock DirectoryClient used in blobmanager.py:UserBlobManager
 class MockDirectoryClient:
     async def get_directory_properties(self):
         # Return dummy properties to indicate directory exists
@@ -665,7 +665,7 @@ class MockDirectoryClient:
         return MockFileClient(filename)
 
 
-# Mock FileClient used in blobmanager.py:AdlsBlobManager
+# Mock FileClient used in blobmanager.py:UserBlobManager
 class MockFileClient:
     def __init__(self, path_name):
         self.path_name = path_name

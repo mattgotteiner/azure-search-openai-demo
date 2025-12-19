@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from .blobmanager import AdlsBlobManager, BaseBlobManager, BlobManager
+from .blobmanager import UserBlobManager, BaseBlobManager, BlobManager
 from .embeddings import ImageEmbeddings, OpenAIEmbeddings
 from .figureprocessor import (
     FigureProcessor,
@@ -155,7 +155,7 @@ class UploadUserFileStrategy:
         self,
         search_info: SearchInfo,
         file_processors: dict[str, FileProcessor],
-        blob_manager: AdlsBlobManager,
+        blob_manager: UserBlobManager,
         search_field_name_embedding: Optional[str] = None,
         embeddings: Optional[OpenAIEmbeddings] = None,
         image_embeddings: Optional[ImageEmbeddings] = None,

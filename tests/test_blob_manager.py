@@ -8,7 +8,7 @@ import azure.storage.filedatalake.aio
 import pytest
 
 # The pythonpath is configured in pyproject.toml to include app/backend
-from prepdocslib.blobmanager import AdlsBlobManager, BlobManager
+from prepdocslib.blobmanager import BlobManager, UserBlobManager
 from prepdocslib.listfilestrategy import File
 
 from .mocks import MockAzureCredential
@@ -30,7 +30,7 @@ def blob_manager():
 
 @pytest.fixture
 def adls_blob_manager(monkeypatch):
-    return AdlsBlobManager(
+    return UserBlobManager(
         endpoint="https://test-storage-account.dfs.core.windows.net",
         container="test-storage-container",
         credential=MockAzureCredential(),
@@ -259,7 +259,7 @@ async def test_adls_upload_document_image(monkeypatch, mock_env, adls_blob_manag
         assert directory_path in [user_oid, image_directory_path]
         return mock_directory_client
 
-    monkeypatch.setattr(AdlsBlobManager, "_ensure_directory", mock_ensure_directory)
+    monkeypatch.setattr(UserBlobManager, "_ensure_directory", mock_ensure_directory)
 
     # Mock file_client.upload_data to avoid actual upload
     async def mock_upload_data(data, overwrite=True, metadata=None):
@@ -399,7 +399,7 @@ async def test_download_blob_properties_none(monkeypatch, mock_env, mock_blob_co
 
 @pytest.mark.asyncio
 async def test_adls_download_blob_permission_denied(monkeypatch, mock_env, adls_blob_manager):
-    """Test that AdlsBlobManager.download_blob returns None when a user tries to access a blob that doesn't belong to them."""
+    """Test that UserBlobManager.download_blob returns None when a user tries to access a blob that doesn't belong to them."""
     user_oid = "test-user-123"
     other_user_oid = "another-user-456"
     blob_path = f"{other_user_oid}/document.pdf"  # Path belonging to another user
@@ -419,7 +419,7 @@ async def test_adls_download_blob_permission_denied(monkeypatch, mock_env, adls_
 async def test_adls_download_blob_with_permission(
     monkeypatch, mock_data_lake_service_client, mock_user_directory_client, adls_blob_manager
 ):
-    """Test that AdlsBlobManager.download_blob works when a user has permission to access a blob."""
+    """Test that UserBlobManager.download_blob works when a user has permission to access a blob."""
 
     content, properties = await adls_blob_manager.download_blob("OID_X/document.pdf", "OID_X")
 
